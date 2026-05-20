@@ -42,8 +42,10 @@ PORT=3000
 
 ## Integrating with AI Clients
 
-### Integrating with Claude Desktop
-To utilize this server in the official Claude Desktop application, add the server configuration to your `claude_desktop_config.json` file.
+This server can be integrated into any AI client, editor, or chat interface that supports the Model Context Protocol (MCP).
+
+### 1. Claude Desktop
+To utilize this server in the official Claude Desktop application, add the configuration to your `claude_desktop_config.json` file.
 
 **File Location:**
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
@@ -63,7 +65,61 @@ To utilize this server in the official Claude Desktop application, add the serve
   }
 }
 ```
-*Note: Make sure to replace `C:\\path\\to\\your\\workspace\\folder` with the actual absolute path to where this server is located on your machine.*
+
+### 2. Cursor IDE (AI Code Editor)
+Cursor supports custom MCP servers directly in its graphical user interface:
+1. Open Cursor and navigate to **Settings** > **Features** > **MCP**.
+2. Click **+ Add New MCP Server**.
+3. Configure the fields in the popup:
+   - **Name:** `lgl-crm`
+   - **Type:** `command`
+   - **Command:** `node C:\path\to\your\workspace\folder\index.js`
+4. Click **Save**. Note: You must ensure that the `LGL_API_KEY` is set in your operating system environment variables or shell configuration so Cursor can inherit it.
+
+### 3. Windsurf IDE (AI Code Editor)
+Windsurf supports native MCP configurations via its global config file.
+
+**File Location:**
+- **Windows:** `%USERPROFILE%\.codeium\windsurf\mcp_config.json`
+- **macOS/Linux:** `~/.codeium/windsurf/mcp_config.json`
+
+**Configuration:**
+```json
+{
+  "mcpServers": {
+    "lgl-crm": {
+      "command": "node",
+      "args": ["C:\\path\\to\\your\\workspace\\folder\\index.js"],
+      "env": {
+        "LGL_API_KEY": "your_lgl_api_key_here"
+      }
+    }
+  }
+}
+```
+
+### 4. LibreChat (Open-Source Chat UI)
+LibreChat allows you to integrate MCP servers directly through its centralized config file `librechat.yaml`.
+
+**Configuration in `librechat.yaml`:**
+```yaml
+mcpServers:
+  lgl-crm:
+    type: "stdio"
+    command: "node"
+    args: ["C:\\path\\to\\your\\workspace\\folder\\index.js"]
+    env:
+      LGL_API_KEY: "your_lgl_api_key_here"
+```
+
+### 5. Open WebUI (Local/Self-Hosted AI UI)
+To add this to Open WebUI (commonly used with local Ollama instances):
+1. Navigate to **Admin Settings** > **Connections** > **MCP**.
+2. Click **Add Connection**.
+3. Name the connection `lgl-crm`.
+4. Enter the command configuration:
+   - **Command:** `node C:\path\to\your\workspace\folder\index.js`
+5. Click **Submit**. (Make sure the environment variable `LGL_API_KEY` is loaded on your host machine or docker run statement running the Open WebUI instance).
 
 ---
 
