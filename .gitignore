@@ -1,0 +1,30 @@
+# Local configuration / credentials
+.env
+.env.local
+.env.production
+.env.development
+.env.staging
+
+# Dependencies
+node_modules/
+jspm_packages/
+web_modules/
+
+# Logs and debugs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# CSV / Excel reports
+*.csv
+*.xlsx
+
+# Cache and local data
+*.json
+!package.json
+!package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db

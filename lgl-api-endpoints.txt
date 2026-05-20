@@ -1,0 +1,206 @@
+Little Green Light (LGL) REST API Endpoints Index
+=================================================
+Base URL: https://api.littlegreenlight.com/api/v1
+Authentication: HTTP Header -> Authorization: Bearer <LGL_API_KEY>
+(Also supports HTTP Basic Auth with API key as username, or "access_token" query parameter)
+
+This document lists all 141 legitimate REST API endpoints parsed directly from the official LGL static documentation at https://api.littlegreenlight.com/api-docs/static.html.
+
+Total Endpoints: 141
+
+---------------------------------------------------------
+1. Constituents & Core Management
+---------------------------------------------------------
+GET    /api/v1/constituents                                         | Fetch all Constituents for an account
+POST   /api/v1/constituents                                         | Create new Constituent
+GET    /api/v1/constituents/search                                  | Search for Constituents
+GET    /api/v1/constituents/{id}                                    | Show Constituent details
+PATCH  /api/v1/constituents/{id}                                    | Update constituent
+DELETE /api/v1/constituents/{id}                                    | Delete constituent
+
+---------------------------------------------------------
+2. Gifts & Fundraising
+---------------------------------------------------------
+GET    /api/v1/constituents/{constituent_id}/gifts                  | Fetch Gifts for a Constituent
+POST   /api/v1/constituents/{constituent_id}/gifts                  | Create new Gift for a Constituent
+GET    /api/v1/gifts/search                                         | Search for Gifts
+GET    /api/v1/gifts/{id}                                           | Show Gift details
+PATCH  /api/v1/gifts/{id}                                           | Update Gift
+DELETE /api/v1/gifts/{id}                                           | Delete Gift
+GET    /api/v1/campaigns                                            | Fetch Campaigns
+POST   /api/v1/campaigns                                            | Create new Campaign
+GET    /api/v1/campaigns/{id}                                       | Show Campaign details
+PATCH  /api/v1/campaigns/{id}                                       | Update Campaign
+DELETE /api/v1/campaigns/{id}                                       | Delete Campaign
+GET    /api/v1/funds                                                | Fetch Funds
+POST   /api/v1/funds                                                | Create new Fund
+GET    /api/v1/funds/{id}                                           | Show Fund details
+PATCH  /api/v1/funds/{id}                                           | Update Fund
+DELETE /api/v1/funds/{id}                                           | Delete Fund
+GET    /api/v1/events                                               | Fetch Events
+POST   /api/v1/events                                               | Create new Event
+GET    /api/v1/events/{id}                                          | Show Event details
+PATCH  /api/v1/events/{id}                                          | Update Event
+DELETE /api/v1/events/{id}                                          | Delete Event
+
+---------------------------------------------------------
+3. Appeals & Appeal Requests
+---------------------------------------------------------
+GET    /api/v1/appeals                                              | Fetch Appeals
+POST   /api/v1/appeals                                              | Create new Appeal
+GET    /api/v1/appeals/{id}                                         | Show Appeal details
+PATCH  /api/v1/appeals/{id}                                         | Update Appeal
+DELETE /api/v1/appeals/{id}                                         | Delete Appeal
+GET    /api/v1/appeals/{appeal_id}/appeal_requests                  | Fetch Appeal Requests for Appeal
+POST   /api/v1/appeals/{appeal_id}/appeal_requests                  | Create new Appeal Request
+GET    /api/v1/appeal_requests/{id}                                 | Show Appeal Request details
+PATCH  /api/v1/appeal_requests/{id}                                 | Update Appeal Request
+DELETE /api/v1/appeal_requests/{id}                                 | Delete Appeal Request
+GET    /api/v1/constituents/{constituent_id}/appeal_requests        | Fetch Appeal Requests for Constituent
+POST   /api/v1/constituents/{constituent_id}/appeal_requests        | Create new Appeal Request for Constituent
+
+---------------------------------------------------------
+4. Constituent Sub-Resources (Contact Info & Web)
+---------------------------------------------------------
+* Street Addresses:
+GET    /api/v1/constituents/{constituent_id}/street_addresses       | Fetch Street Addresses
+POST   /api/v1/constituents/{constituent_id}/street_addresses       | Create new Street Address
+GET    /api/v1/street_addresses/{id}                                | Show Street Address details
+PATCH  /api/v1/street_addresses/{id}                                | Update Street Address
+DELETE /api/v1/street_addresses/{id}                                | Delete Street Address
+
+* Phone Numbers:
+GET    /api/v1/constituents/{constituent_id}/phone_numbers          | Fetch Phone Numbers
+POST   /api/v1/constituents/{constituent_id}/phone_numbers          | Create new Phone Number
+GET    /api/v1/phone_numbers/{id}                                   | Show Phone Number details
+PATCH  /api/v1/phone_numbers/{id}                                   | Update Phone Number
+DELETE /api/v1/phone_numbers/{id}                                   | Delete Phone Number
+
+* Email Addresses:
+GET    /api/v1/constituents/{constituent_id}/email_addresses        | Fetch Email Addresses
+POST   /api/v1/constituents/{constituent_id}/email_addresses        | Create new Email Address
+GET    /api/v1/email_addresses/{id}                                 | Show Email Address details
+PATCH  /api/v1/email_addresses/{id}                                 | Update Email Address
+DELETE /api/v1/email_addresses/{id}                                 | Delete Email Address
+
+* Web Addresses:
+GET    /api/v1/constituents/{constituent_id}/web_addresses          | Fetch Web Addresses
+POST   /api/v1/constituents/{constituent_id}/web_addresses          | Create new Web Address
+GET    /api/v1/web_addresses/{id}                                   | Show Web Address details
+PATCH  /api/v1/web_addresses/{id}                                   | Update Web Address
+DELETE /api/v1/web_addresses/{id}                                   | Delete Web Address
+
+---------------------------------------------------------
+5. Activities, Notes & Contact Reports
+---------------------------------------------------------
+* Contact Reports:
+GET    /api/v1/contact_reports                                      | Fetch Contact Reports for Account
+GET    /api/v1/contact_reports/search                               | Search for Contact Reports
+GET    /api/v1/contact_reports/{id}                                 | Show Contact Report details
+PATCH  /api/v1/contact_reports/{id}                                 | Update Contact Report
+DELETE /api/v1/contact_reports/{id}                                 | Delete Contact Report
+GET    /api/v1/constituents/{constituent_id}/contact_reports        | Fetch Contact Reports for Constituent
+POST   /api/v1/constituents/{constituent_id}/contact_reports        | Create new Contact Report
+
+* Notes:
+GET    /api/v1/notes                                                | Fetch Notes for Account
+GET    /api/v1/notes/{id}                                           | Show Note details
+PATCH  /api/v1/notes/{id}                                           | Update Note
+DELETE /api/v1/notes/{id}                                           | Delete Note
+GET    /api/v1/constituents/{constituent_id}/notes                  | Fetch Notes for Constituent
+POST   /api/v1/constituents/{constituent_id}/notes                  | Create new Note
+
+* Volunteer Tracking:
+GET    /api/v1/volunteer_times                                      | Fetch Volunteer Times for Account
+GET    /api/v1/volunteer_times/search                               | Search for Volunteer Times
+GET    /api/v1/volunteer_times/{id}                                 | Show Volunteer Time details
+PATCH  /api/v1/volunteer_times/{id}                                 | Update Volunteer Time
+DELETE /api/v1/volunteer_times/{id}                                 | Delete Volunteer Time
+GET    /api/v1/constituents/{constituent_id}/volunteer_times        | Fetch Volunteer Times for Constituent
+POST   /api/v1/constituents/{constituent_id}/volunteer_times        | Create new Volunteer Time
+
+---------------------------------------------------------
+6. Relationships & Class Affiliations
+---------------------------------------------------------
+* Constituent Relationships:
+GET    /api/v1/constituents/{constituent_id}/constituent_relationships | Fetch Constituent Relationships for a Constituent
+POST   /api/v1/constituents/{constituent_id}/constituent_relationships | Create new Constituent Relationship
+GET    /api/v1/constituent_relationships/{id}                       | Show Constituent Relationship details
+PATCH  /api/v1/constituent_relationships/{id}                       | Update Constituent Relationship
+DELETE /api/v1/constituent_relationships/{id}                       | Delete Constituent Relationship
+
+* Class Affiliations:
+GET    /api/v1/class_affiliation_types                              | Fetch Class Affiliation Types
+GET    /api/v1/constituents/{constituent_id}/class_affiliations     | Fetch Class Affiliations
+POST   /api/v1/constituents/{constituent_id}/class_affiliations     | Create new Class Affiliation
+GET    /api/v1/class_affiliations/{id}                              | Show Class Affiliation details
+PATCH  /api/v1/class_affiliations/{id}                              | Update Class Affiliation
+DELETE /api/v1/class_affiliations/{id}                              | Delete Class Affiliation
+
+---------------------------------------------------------
+7. Groups, Memberships & Invitations
+---------------------------------------------------------
+* Groups & Group Memberships:
+GET    /api/v1/groups                                               | Fetch Groups
+POST   /api/v1/groups                                               | Create new Group
+GET    /api/v1/groups/{id}                                          | Show Group details
+PATCH  /api/v1/groups/{id}                                          | Update Group
+DELETE /api/v1/groups/{id}                                          | Delete Group
+GET    /api/v1/constituents/{constituent_id}/group_memberships      | Fetch Group Memberships
+POST   /api/v1/constituents/{constituent_id}/group_memberships      | Create new Group Membership
+GET    /api/v1/group_memberships/{id}                               | Show Group Membership details
+PATCH  /api/v1/group_memberships/{id}                               | Update Group Membership
+DELETE /api/v1/group_memberships/{id}                               | Delete Group Membership
+
+* Memberships & Levels:
+GET    /api/v1/constituents/{constituent_id}/memberships            | Fetch Memberships
+POST   /api/v1/constituents/{constituent_id}/memberships            | Create new Membership
+GET    /api/v1/memberships/{id}                                     | Show Membership details
+PATCH  /api/v1/memberships/{id}                                     | Update Membership
+DELETE /api/v1/memberships/{id}                                     | Delete Membership
+GET    /api/v1/membership_levels                                    | Fetch Membership Levels
+POST   /api/v1/membership_levels                                    | Create new Membership Level
+GET    /api/v1/membership_levels/{id}                               | Show Membership Level details
+PATCH  /api/v1/membership_levels/{id}                               | Update Membership Level
+DELETE /api/v1/membership_levels/{id}                               | Delete Membership Level
+
+* Event Invitations:
+GET    /api/v1/constituents/{constituent_id}/invitations            | Fetch Invitations for Constituent
+POST   /api/v1/constituents/{constituent_id}/invitations            | Create new Invitation for Constituent
+GET    /api/v1/events/{event_id}/invitations                        | Fetch Invitations for Event
+POST   /api/v1/events/{event_id}/invitations                        | Create new Invitation
+GET    /api/v1/invitations/{id}                                     | Show Invitation details
+PATCH  /api/v1/invitations/{id}                                     | Update Invitation
+DELETE /api/v1/invitations/{id}                                     | Delete Invitation
+
+---------------------------------------------------------
+8. Categories & Keywords Customization
+---------------------------------------------------------
+GET    /api/v1/categories                                           | Fetch Categories for Account
+POST   /api/v1/categories                                           | Create new Category
+GET    /api/v1/categories/{category_id}/keywords                    | Fetch Keywords
+POST   /api/v1/categories/{category_id}/keywords                    | Create new Keyword
+GET    /api/v1/categories/{id}                                      | Show Category details
+PATCH  /api/v1/categories/{id}                                      | Update Category
+DELETE /api/v1/categories/{id}                                      | Delete Category
+GET    /api/v1/constituents/{constituent_id}/categories             | Fetch Categories for Constituent
+POST   /api/v1/constituents/{constituent_id}/keywords               | Add Keyword
+DELETE /api/v1/constituents/{constituent_id}/keywords/{id}          | Remove Keyword
+GET    /api/v1/keywords/{id}                                        | Show Keyword details
+PATCH  /api/v1/keywords/{id}                                        | Update Keyword
+DELETE /api/v1/keywords/{id}                                        | Delete Keyword
+
+---------------------------------------------------------
+9. Helper Lists, Metadata & System Types
+---------------------------------------------------------
+GET    /api/v1/lists                                                | Fetch Lists
+GET    /api/v1/lists/search                                         | Search for Lists
+GET    /api/v1/mailing_templates                                    | Fetch Mailing Templates
+GET    /api/v1/team_members                                         | Fetch Team Members
+GET    /api/v1/attributes                                           | Fetch Custom Attributes
+GET    /api/v1/gift_categories                                      | Fetch Gift Categories
+GET    /api/v1/gift_types                                           | Fetch Gift Types
+GET    /api/v1/payment_types                                        | Fetch Payment Types
+GET    /api/v1/relationship_types                                   | Fetch Relationship Types
+GET    /api/v1/types                                                | Fetch Types for Account
+GET    /api/v1/types/{type}                                         | Fetch Values for Type
