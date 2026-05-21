@@ -38,6 +38,14 @@ LGL_API_KEY=your_lgl_api_key_here
 PORT=3000
 ```
 
+#### Optional: Read-Only Mode
+Set `LGL_READ_ONLY=true` to refuse every `create_*`, `update_*`, `delete_*`, `record_*`, and `add_*` tool call. Mutation tools are also hidden from `tools/list` so the AI assistant doesn't try to call them. Recommended whenever you point the server at a live donor database from an exploratory chat session.
+```env
+LGL_READ_ONLY=true
+```
+
+All tools also publish MCP `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so clients can warn before destructive calls without depending on the server-side guard.
+
 ---
 
 ## Integrating with AI Clients

@@ -6,12 +6,12 @@
     "url": "https://github.com/WillHeadlee/Little-Green-Light-MCP-Server",
     "source": "github"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "lgl-mcp-server",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "transport": {
         "type": "stdio"
       },
@@ -21,6 +21,13 @@
           "description": "Your Little Green Light API key (Settings → Integration → API Keys)",
           "isRequired": true,
           "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "LGL_READ_ONLY",
+          "description": "Set to \"true\" to refuse all create/update/delete tool calls and hide mutation tools from tools/list. Useful when pointing the server at a live donor database from an exploratory session.",
+          "isRequired": false,
+          "isSecret": false,
           "format": "string"
         }
       ]
