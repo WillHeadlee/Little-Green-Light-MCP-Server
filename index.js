@@ -49,17 +49,81 @@ async function lglRequest(method, path, body) {
   if (res.status === 404) throw new Error(`Record or path not found: ${cleanPath}`);
   if (res.status === 429) throw new Error("LGL rate limit hit — please wait a moment and try again");
   if (!res.ok) {
-    let errMsg = `LGL API error ${res.status}`;
-    try {
-      const errJson = await res.json();
-      if (errJson.error) errMsg += `: ${errJson.error}`;
-    } catch {}
-    throw new Error(errMsg);
+    const detail = await readErrorBody(res);
+    throw new Error(`LGL API error ${res.status}${detail ? `: ${detail}` : ""}`);
   }
 
   if (res.status === 204 || res.headers.get("content-length") === "0") return {};
 
   return res.json();
+}
+
+async function readErrorBody(res) {
+  let raw;
+  try {
+    raw = await res.text();
+  } catch {
+    return "";
+  }
+  if (!raw) return "";
+  try {
+    const j = JSON.parse(raw);
+    if (typeof j === "string") return j;
+    if (j.error) return typeof j.error === "string" ? j.error : JSON.stringify(j.error);
+    if (j.message) return j.message;
+    if (Array.isArray(j.errors) && j.errors.length) {
+      return j.errors
+        .map((e) => {
+          if (typeof e === "string") return e;
+          const field = e.field ?? e.attribute;
+          const msg = e.message ?? JSON.stringify(e);
+          return field ? `${field}: ${msg}` : msg;
+        })
+        .join("; ");
+    }
+    return JSON.stringify(j);
+  } catch {
+    return raw.length > 500 ? `${raw.slice(0, 500)}…` : raw;
+  }
+}
+
+// ─── Date Helpers (UTC) ──────────────────────────────────────────────────────
+// Use UTC-anchored math so cutoffs don't shift across local timezones near
+// midnight. Returns YYYY-MM-DD.
+
+function utcDateNDaysAgo(days) {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+  return d.toISOString().slice(0, 10);
+}
+
+function utcDateNMonthsAgo(months) {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, now.getUTCDate()));
+  return d.toISOString().slice(0, 10);
+}
+
+// ─── Pagination Helper ───────────────────────────────────────────────────────
+// /gifts/search returns at most ~500 records per call. To produce correct
+// aggregate reports, walk the dataset in pages. Bounded by `maxPages` so a
+// large account doesn't run unbounded; surface `truncated: true` so callers
+// know the result may be incomplete.
+
+async function paginateGifts(baseQuery, { pageSize = 200, maxPages = 25 } = {}) {
+  const all = [];
+  let offset = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams(baseQuery);
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    const data = await lglRequest("GET", `/gifts/search?${params}`);
+    const items = data.items ?? data;
+    if (!Array.isArray(items) || items.length === 0) return { gifts: all, truncated: false };
+    all.push(...items);
+    if (items.length < pageSize) return { gifts: all, truncated: false };
+    offset += pageSize;
+  }
+  return { gifts: all, truncated: true };
 }
 
 // ─── Formatting Helpers ──────────────────────────────────────────────────────
@@ -383,12 +447,14 @@ const TOOLS = [
   // ── 3. Gifts & Fundraising ─────────────────────────────────────────────────
   {
     name: "list_gifts",
-    description: "List gifts, either for a specific constituent (nested) or across the account (search)",
+    description: "List gifts, either for a specific constituent (nested) or across the account (search). Supports date-range filtering via start_date/end_date (YYYY-MM-DD).",
     inputSchema: {
       type: "object",
       properties: {
         constituent_id: { type: "number", description: "Filter by constituent (calls nested API)" },
         query: { type: "string", description: "Search term across all gifts (if not filtering by constituent)" },
+        start_date: { type: "string", description: "Earliest gift_date to include, YYYY-MM-DD (inclusive)" },
+        end_date: { type: "string", description: "Latest gift_date to include, YYYY-MM-DD (inclusive)" },
         limit: { type: "number", default: 50 },
       },
     },
@@ -1228,13 +1294,12 @@ const TOOLS = [
   // ── 10. Reports & Shortcuts ────────────────────────────────────────────────
   {
     name: "recent_donors",
-    description: "Get donors who gave within the last N days (30, 60, or 90)",
+    description: "Get donors who gave within the last N days (defaults to 30)",
     inputSchema: {
       type: "object",
       properties: {
-        days: { type: "number", enum: [30, 60, 90] },
+        days: { type: "number", description: "Lookback window in days", default: 30 },
       },
-      required: ["days"],
     },
   },
   {
@@ -1274,11 +1339,24 @@ const TOOLS = [
       required: ["missing"],
     },
   },
+  {
+    name: "get_donor_context",
+    description: "One-shot lookup that returns a constituent's profile plus their recent giving history, group memberships, and recent notes. Saves 4-5 round trips compared to calling get_constituent + list_gifts + list_group_memberships + list_notes separately for the common 'tell me about <donor>' workflow. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple constituents match).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        constituent_id: { type: "number", description: "Direct lookup by ID (preferred if known)" },
+        name: { type: "string", description: "Name to resolve via search if ID isn't known. Errors with a candidate list if multiple constituents match." },
+        gift_limit: { type: "number", default: 10, description: "Max recent gifts to include" },
+        note_limit: { type: "number", default: 5, description: "Max recent notes to include" },
+      },
+    },
+  },
 
   // ── 11. Generic API Call Tool ──────────────────────────────────────────────
   {
     name: "call_lgl_api",
-    description: "Execute a custom LGL REST API request directly to any of the 141 supported endpoints. Use this as a complete backup tool.",
+    description: "Raw passthrough to the LGL REST API for endpoints not covered by a typed tool. PREFER the typed tools whenever they cover your use case — they validate inputs, normalize field names, and return summarized payloads. Reach for this only when no typed tool fits; do not use it as a retry path when a typed tool fails.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1461,13 +1539,18 @@ async function handleTool(name, args) {
     // ── 3. Gifts & Fundraising ───────────────────────────────────────────────
 
     case "list_gifts": {
+      const limit = args.limit ?? 50;
       if (args.constituent_id) {
-        const params = new URLSearchParams({ limit: (args.limit ?? 50).toString() });
+        const params = new URLSearchParams({ limit: String(limit) });
+        if (args.start_date) params.set("start_date", args.start_date);
+        if (args.end_date) params.set("end_date", args.end_date);
         const data = await lglRequest("GET", `/constituents/${args.constituent_id}/gifts?${params}`);
         return toText((data.items ?? data).map(summaryGift));
       } else {
-        const params = new URLSearchParams({ limit: (args.limit ?? 50).toString() });
+        const params = new URLSearchParams({ limit: String(limit) });
         if (args.query) params.set("q", args.query);
+        if (args.start_date) params.set("start_date", args.start_date);
+        if (args.end_date) params.set("end_date", args.end_date);
         const data = await lglRequest("GET", `/gifts/search?${params}`);
         return toText((data.items ?? data).map(summaryGift));
       }
@@ -2003,11 +2086,9 @@ async function handleTool(name, args) {
     // ── 10. Reports & Shortcuts ──────────────────────────────────────────────
 
     case "recent_donors": {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - args.days);
-      const start_date = cutoff.toISOString().split("T")[0];
-      const data = await lglRequest("GET", `/gifts/search?start_date=${start_date}&limit=500`);
-      const gifts = data.items ?? data;
+      const days = args.days ?? 30;
+      const start_date = utcDateNDaysAgo(days);
+      const { gifts, truncated } = await paginateGifts({ start_date });
 
       const byConstituent = {};
       for (const g of gifts) {
@@ -2027,23 +2108,39 @@ async function handleTool(name, args) {
         if (g.gift_date > rec.last_gift_date) rec.last_gift_date = g.gift_date;
       }
 
-      return toText(Object.values(byConstituent).sort((a, b) =>
+      const donors = Object.values(byConstituent).sort((a, b) =>
         b.last_gift_date.localeCompare(a.last_gift_date)
-      ));
+      );
+
+      const result = { since: start_date, count: donors.length, donors };
+      if (truncated) {
+        result.truncated = true;
+        result.notice = "Hit pagination ceiling — totals and counts may be incomplete for high-volume accounts.";
+      }
+      return toText(result);
     }
 
     case "lapsed_donors": {
+      // A donor is "lapsed" if they have given previously but not in the last
+      // N months. The naive approach — pull the most recent N gifts and look
+      // for old dates — is wrong by construction: a donor whose last gift is
+      // older than the recent-N window will never appear in that window for
+      // an active org, so they're invisible to the report.
+      //
+      // Correct approach, two queries:
+      //   1. Active set:   gifts with gift_date >= cutoff  → constituent IDs to EXCLUDE
+      //   2. Pre-cutoff:   gifts with gift_date <  cutoff  → candidate donors
+      // Lapsed = candidates not in the active set.
       const months = args.months_lapsed ?? 12;
-      const cutoff = new Date();
-      cutoff.setMonth(cutoff.getMonth() - months);
-      const cutoffStr = cutoff.toISOString().split("T")[0];
+      const cutoffStr = utcDateNMonthsAgo(months);
 
-      const data = await lglRequest("GET", "/gifts/search?limit=500");
-      const gifts = data.items ?? data;
+      const active = await paginateGifts({ start_date: cutoffStr });
+      const activeIds = new Set(active.gifts.map((g) => g.constituent_id));
 
+      const pre = await paginateGifts({ end_date: cutoffStr });
       const latest = {};
       const totals = {};
-      for (const g of gifts) {
+      for (const g of pre.gifts) {
         const cid = g.constituent_id;
         if (!latest[cid] || g.gift_date > latest[cid].date) {
           latest[cid] = { date: g.gift_date, name: g.constituent_name ?? `ID ${cid}` };
@@ -2051,27 +2148,36 @@ async function handleTool(name, args) {
         totals[cid] = (totals[cid] ?? 0) + parseFloat(g.amount ?? 0);
       }
 
-      return toText(
-        Object.entries(latest)
-          .filter(([, v]) => v.date < cutoffStr)
-          .map(([cid, v]) => ({
-            constituent_id: parseInt(cid),
-            name: v.name,
-            last_gift_date: v.date,
-            lifetime_total: totals[cid] ?? 0,
-          }))
-          .sort((a, b) => a.last_gift_date.localeCompare(b.last_gift_date))
-      );
+      const lapsed = Object.entries(latest)
+        .filter(([cid]) => !activeIds.has(parseInt(cid)))
+        .map(([cid, v]) => ({
+          constituent_id: parseInt(cid),
+          name: v.name,
+          last_gift_date: v.date,
+          lifetime_total: totals[cid] ?? 0,
+        }))
+        .sort((a, b) => a.last_gift_date.localeCompare(b.last_gift_date));
+
+      const result = { cutoff: cutoffStr, months_lapsed: months, count: lapsed.length, lapsed_donors: lapsed };
+      if (active.truncated || pre.truncated) {
+        result.truncated = true;
+        result.notice =
+          "Hit pagination ceiling — results may be incomplete. " +
+          (active.truncated
+            ? "Active-donor set was truncated, so some constituents may be wrongly flagged as lapsed. "
+            : "") +
+          (pre.truncated ? "Pre-cutoff history was truncated, so some lapsed donors may be missing." : "");
+      }
+      return toText(result);
     }
 
     case "top_donors": {
       const limit = args.limit ?? 25;
-      const params = new URLSearchParams({ limit: "500" });
-      if (args.start_date) params.set("start_date", args.start_date);
-      if (args.end_date) params.set("end_date", args.end_date);
+      const baseQuery = {};
+      if (args.start_date) baseQuery.start_date = args.start_date;
+      if (args.end_date) baseQuery.end_date = args.end_date;
 
-      const data = await lglRequest("GET", `/gifts/search?${params}`);
-      const gifts = data.items ?? data;
+      const { gifts, truncated } = await paginateGifts(baseQuery);
 
       const agg = {};
       for (const g of gifts) {
@@ -2083,12 +2189,19 @@ async function handleTool(name, args) {
         agg[cid].gift_count += 1;
       }
 
-      return toText(
-        Object.values(agg)
-          .sort((a, b) => b.total_given - a.total_given)
-          .slice(0, limit)
-          .map((rec, i) => ({ rank: i + 1, ...rec }))
-      );
+      const ranked = Object.values(agg)
+        .sort((a, b) => b.total_given - a.total_given)
+        .slice(0, limit)
+        .map((rec, i) => ({ rank: i + 1, ...rec }));
+
+      const result = { count: ranked.length, top_donors: ranked };
+      if (args.start_date) result.start_date = args.start_date;
+      if (args.end_date) result.end_date = args.end_date;
+      if (truncated) {
+        result.truncated = true;
+        result.notice = "Hit pagination ceiling — rankings may be incomplete for high-volume accounts.";
+      }
+      return toText(result);
     }
 
     case "constituents_missing_info": {
@@ -2110,6 +2223,52 @@ async function handleTool(name, args) {
       return toText(results);
     }
 
+    case "get_donor_context": {
+      // Resolve to a numeric constituent_id first. If only a name is given,
+      // search and require an unambiguous match — return the candidate list
+      // on ambiguity so the model can ask the user or retry with an ID.
+      let id = args.constituent_id;
+      if (!id) {
+        if (!args.name) {
+          throw new Error("Provide either constituent_id or name.");
+        }
+        const params = new URLSearchParams({ q: args.name, limit: "10" });
+        const search = await lglRequest("GET", `/constituents/search?${params}`);
+        const matches = (search.items ?? search) || [];
+        if (!Array.isArray(matches) || matches.length === 0) {
+          throw new Error(`No constituent found matching "${args.name}". Try a broader query with search_constituents.`);
+        }
+        if (matches.length > 1) {
+          const candidates = matches.slice(0, 10).map(summaryConstituent);
+          throw new Error(
+            `Multiple constituents match "${args.name}". Re-call with a specific constituent_id. Candidates: ${JSON.stringify(candidates)}`
+          );
+        }
+        id = matches[0].id;
+      }
+
+      const giftLimit = args.gift_limit ?? 10;
+      const noteLimit = args.note_limit ?? 5;
+
+      // Fan out the dependent reads. Group memberships and notes are optional
+      // (not every account exposes them on every constituent), so swallow
+      // 404s on those rather than failing the whole context call.
+      const [constituent, giftsData, groupsData, notesData] = await Promise.all([
+        lglRequest("GET", `/constituents/${id}`),
+        lglRequest("GET", `/constituents/${id}/gifts?limit=${giftLimit}`).catch((e) => ({ _error: e.message })),
+        lglRequest("GET", `/constituents/${id}/group_memberships`).catch((e) => ({ _error: e.message })),
+        lglRequest("GET", `/constituents/${id}/notes?limit=${noteLimit}`).catch((e) => ({ _error: e.message })),
+      ]);
+
+      return toText({
+        constituent: summaryConstituent(constituent),
+        full_record: constituent,
+        recent_gifts: giftsData._error ? { error: giftsData._error } : (giftsData.items ?? giftsData).map(summaryGift),
+        group_memberships: groupsData._error ? { error: groupsData._error } : (groupsData.items ?? groupsData),
+        recent_notes: notesData._error ? { error: notesData._error } : (notesData.items ?? notesData),
+      });
+    }
+
     // ── 11. Generic API Call Tool ────────────────────────────────────────────
 
     case "call_lgl_api": {
@@ -2122,17 +2281,62 @@ async function handleTool(name, args) {
   }
 }
 
+// ─── Tool Annotations & Read-Only Mode ──────────────────────────────────────
+// Classify every tool so MCP clients (and this server's own write-guard) can
+// reason about which calls modify data. Annotations follow the 2025-06-18 MCP
+// spec: readOnlyHint, destructiveHint, idempotentHint, openWorldHint.
+//
+// Set LGL_READ_ONLY=true in the environment to refuse all mutations. Useful
+// when pointing the server at a live donor database from an exploratory chat
+// session. Read-only mode also hides mutation tools from tools/list so the
+// model doesn't try to call them.
+
+function classifyTool(name) {
+  if (name === "call_lgl_api") {
+    return { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+  }
+  if (name.startsWith("delete_") || name.startsWith("remove_")) {
+    return { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
+  }
+  if (name.startsWith("update_")) {
+    return { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+  }
+  if (name.startsWith("create_") || name.startsWith("record_") || name.startsWith("add_")) {
+    return { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+  }
+  return { readOnlyHint: true, openWorldHint: true };
+}
+
+for (const tool of TOOLS) {
+  tool.annotations = classifyTool(tool.name);
+}
+
+const READ_ONLY_MODE = process.env.LGL_READ_ONLY === "true";
+
+function assertWriteAllowed(name) {
+  if (!READ_ONLY_MODE) return;
+  if (TOOLS.find((t) => t.name === name)?.annotations?.readOnlyHint) return;
+  throw new Error(
+    `LGL_READ_ONLY=true is set: tool "${name}" is disabled because it can modify data. ` +
+    `Unset LGL_READ_ONLY (or set it to false) to allow writes.`
+  );
+}
+
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.0.0" },
+  { name: "lgl-mcp", version: "1.1.0" },
   { capabilities: { tools: {} } }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  const tools = READ_ONLY_MODE ? TOOLS.filter((t) => t.annotations?.readOnlyHint) : TOOLS;
+  return { tools };
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
+    assertWriteAllowed(req.params.name);
     return await handleTool(req.params.name, req.params.arguments ?? {});
   } catch (err) {
     return toError(err);
@@ -2141,4 +2345,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("LGL MCP server running successfully");
+console.error(
+  `LGL MCP server running successfully${READ_ONLY_MODE ? " (read-only mode)" : ""}`
+);
