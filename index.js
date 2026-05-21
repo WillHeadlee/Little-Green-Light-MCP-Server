@@ -1339,11 +1339,24 @@ const TOOLS = [
       required: ["missing"],
     },
   },
+  {
+    name: "get_donor_context",
+    description: "One-shot lookup that returns a constituent's profile plus their recent giving history, group memberships, and recent notes. Saves 4-5 round trips compared to calling get_constituent + list_gifts + list_group_memberships + list_notes separately for the common 'tell me about <donor>' workflow. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple constituents match).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        constituent_id: { type: "number", description: "Direct lookup by ID (preferred if known)" },
+        name: { type: "string", description: "Name to resolve via search if ID isn't known. Errors with a candidate list if multiple constituents match." },
+        gift_limit: { type: "number", default: 10, description: "Max recent gifts to include" },
+        note_limit: { type: "number", default: 5, description: "Max recent notes to include" },
+      },
+    },
+  },
 
   // ── 11. Generic API Call Tool ──────────────────────────────────────────────
   {
     name: "call_lgl_api",
-    description: "Execute a custom LGL REST API request directly to any of the 141 supported endpoints. Use this as a complete backup tool.",
+    description: "Raw passthrough to the LGL REST API for endpoints not covered by a typed tool. PREFER the typed tools whenever they cover your use case — they validate inputs, normalize field names, and return summarized payloads. Reach for this only when no typed tool fits; do not use it as a retry path when a typed tool fails.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2208,6 +2221,52 @@ async function handleTool(name, args) {
       }
 
       return toText(results);
+    }
+
+    case "get_donor_context": {
+      // Resolve to a numeric constituent_id first. If only a name is given,
+      // search and require an unambiguous match — return the candidate list
+      // on ambiguity so the model can ask the user or retry with an ID.
+      let id = args.constituent_id;
+      if (!id) {
+        if (!args.name) {
+          throw new Error("Provide either constituent_id or name.");
+        }
+        const params = new URLSearchParams({ q: args.name, limit: "10" });
+        const search = await lglRequest("GET", `/constituents/search?${params}`);
+        const matches = (search.items ?? search) || [];
+        if (!Array.isArray(matches) || matches.length === 0) {
+          throw new Error(`No constituent found matching "${args.name}". Try a broader query with search_constituents.`);
+        }
+        if (matches.length > 1) {
+          const candidates = matches.slice(0, 10).map(summaryConstituent);
+          throw new Error(
+            `Multiple constituents match "${args.name}". Re-call with a specific constituent_id. Candidates: ${JSON.stringify(candidates)}`
+          );
+        }
+        id = matches[0].id;
+      }
+
+      const giftLimit = args.gift_limit ?? 10;
+      const noteLimit = args.note_limit ?? 5;
+
+      // Fan out the dependent reads. Group memberships and notes are optional
+      // (not every account exposes them on every constituent), so swallow
+      // 404s on those rather than failing the whole context call.
+      const [constituent, giftsData, groupsData, notesData] = await Promise.all([
+        lglRequest("GET", `/constituents/${id}`),
+        lglRequest("GET", `/constituents/${id}/gifts?limit=${giftLimit}`).catch((e) => ({ _error: e.message })),
+        lglRequest("GET", `/constituents/${id}/group_memberships`).catch((e) => ({ _error: e.message })),
+        lglRequest("GET", `/constituents/${id}/notes?limit=${noteLimit}`).catch((e) => ({ _error: e.message })),
+      ]);
+
+      return toText({
+        constituent: summaryConstituent(constituent),
+        full_record: constituent,
+        recent_gifts: giftsData._error ? { error: giftsData._error } : (giftsData.items ?? giftsData).map(summaryGift),
+        group_memberships: groupsData._error ? { error: groupsData._error } : (groupsData.items ?? groupsData),
+        recent_notes: notesData._error ? { error: notesData._error } : (notesData.items ?? notesData),
+      });
     }
 
     // ── 11. Generic API Call Tool ────────────────────────────────────────────

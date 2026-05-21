@@ -7,10 +7,12 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 ## Features
 
 - **Constituents & Core Management:** Search, retrieve, create, update, and delete constituent records.
-- **Fundraising & Gifts:** Record new gifts, list transactions, search payments, and view campaigns, funds, appeals, and events.
+- **Fundraising & Gifts:** Record new gifts, list transactions (with date-range filters), search payments, and view campaigns, funds, appeals, and events.
 - **Contact Sub-Resources:** Fully manage street addresses, phone numbers, email addresses, and web addresses for constituents.
 - **Activities & Notes:** Log notes, write contact reports, track volunteer hours, and schedule reminders.
 - **Groups & Memberships:** Organize constituents into customizable groups and membership levels.
+- **One-Shot Donor Lookup:** `get_donor_context` returns profile + recent gifts + group memberships + recent notes in a single call (resolves by name or ID).
+- **Read-Only Safety:** `LGL_READ_ONLY=true` refuses every mutation and hides write tools from `tools/list`. All tools publish MCP destructive/idempotent annotations.
 - **Zero-Middleware Architecture:** Data transits directly between the local AI client and the LGL API, reducing security risks and third-party fees.
 
 ---
