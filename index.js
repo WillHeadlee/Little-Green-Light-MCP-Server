@@ -2325,7 +2325,7 @@ function assertWriteAllowed(name) {
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.1.0" },
+  { name: "lgl-mcp", version: "1.2.0" },
   { capabilities: { tools: {} } }
 );
 
