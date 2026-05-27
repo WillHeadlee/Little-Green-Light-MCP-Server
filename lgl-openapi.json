@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "Little Green Light CRM API",
-    "description": "Complete REST API connector for the Little Green Light donor database. Manage constituents, gifts, campaigns, funds, appeals, contact methods, groups, and membership levels.",
+    "description": "Complete, 141-endpoint REST API connector for the Little Green Light donor database. Exposes all core resources, sub-resources, campaigns, fundraising, activities, and customization tools.",
     "version": "1.0.0"
   },
   "host": "api.littlegreenlight.com",
@@ -26,25 +26,23 @@
   "paths": {
     "/constituents": {
       "get": {
-        "summary": "List Constituents",
-        "description": "Retrieve all constituents with pagination.",
-        "operationId": "listConstituents",
+        "summary": "Fetch all Constituents for an account",
+        "description": "Fetch all Constituents for an account",
+        "operationId": "listconstituents",
         "parameters": [
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum records to return",
-            "required": false,
             "type": "integer",
-            "default": 50
+            "default": 50,
+            "description": "Maximum records to return"
           },
           {
             "name": "offset",
             "in": "query",
-            "description": "Number of records to skip",
-            "required": false,
             "type": "integer",
-            "default": 0
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -54,9 +52,9 @@
         }
       },
       "post": {
-        "summary": "Create Constituent",
-        "description": "Create a new constituent record.",
-        "operationId": "createConstituent",
+        "summary": "Create new Constituent",
+        "description": "Create new Constituent",
+        "operationId": "createconstituents",
         "parameters": [
           {
             "name": "body",
@@ -65,41 +63,46 @@
             "schema": {
               "type": "object",
               "properties": {
-                "first_name": { "type": "string" },
-                "last_name": { "type": "string" },
-                "organization_name": { "type": "string" },
-                "constituent_type": { "type": "string", "enum": ["individual", "organization"], "default": "individual" }
+                "first_name": {
+                  "type": "string"
+                },
+                "last_name": {
+                  "type": "string"
+                },
+                "organization_name": {
+                  "type": "string"
+                },
+                "constituent_type": {
+                  "type": "string",
+                  "enum": [
+                    "individual",
+                    "organization"
+                  ],
+                  "default": "individual"
+                }
               }
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/constituents/search": {
       "get": {
-        "summary": "Search Constituents",
-        "description": "Search constituents by name, email, phone, or search term.",
-        "operationId": "searchConstituents",
+        "summary": "Search for Constituents",
+        "description": "Search for Constituents",
+        "operationId": "getconstituentsSearch",
         "parameters": [
           {
             "name": "q",
             "in": "query",
-            "description": "The search term",
+            "type": "string",
             "required": true,
-            "type": "string"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Maximum records to return",
-            "required": false,
-            "type": "integer",
-            "default": 20
+            "description": "Search term"
           }
         ],
         "responses": {
@@ -111,15 +114,16 @@
     },
     "/constituents/{id}": {
       "get": {
-        "summary": "Get Constituent Details",
-        "description": "Fetch a single constituent's comprehensive record by ID.",
-        "operationId": "getConstituent",
+        "summary": "Show Constituent details",
+        "description": "Show Constituent details",
+        "operationId": "getconstituents",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -129,15 +133,16 @@
         }
       },
       "patch": {
-        "summary": "Update Constituent",
-        "description": "Modify an existing constituent's core fields.",
-        "operationId": "updateConstituent",
+        "summary": "Update constituent",
+        "description": "Update constituent",
+        "operationId": "updateconstituents",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -145,12 +150,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "first_name": { "type": "string" },
-                "last_name": { "type": "string" },
-                "organization_name": { "type": "string" },
-                "constituent_type": { "type": "string", "enum": ["individual", "organization"] }
-              }
+              "description": "JSON payload for updateconstituents"
             }
           }
         ],
@@ -161,15 +161,16 @@
         }
       },
       "delete": {
-        "summary": "Delete Constituent",
-        "description": "Remove a constituent record by ID.",
-        "operationId": "deleteConstituent",
+        "summary": "Delete constituent",
+        "description": "Delete constituent",
+        "operationId": "deleteconstituents",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -181,15 +182,30 @@
     },
     "/constituents/{constituent_id}/gifts": {
       "get": {
-        "summary": "List Constituent Gifts",
-        "description": "Fetch all gifts recorded for a specific constituent.",
-        "operationId": "listConstituentGifts",
+        "summary": "Fetch Gifts for a Constituent",
+        "description": "Fetch Gifts for a Constituent",
+        "operationId": "listconstituentsGifts",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -199,15 +215,16 @@
         }
       },
       "post": {
-        "summary": "Record Gift",
-        "description": "Log a new fundraising donation/gift for a constituent.",
-        "operationId": "createGift",
+        "summary": "Create new Gift for a Constituent",
+        "description": "Create new Gift for a Constituent",
+        "operationId": "createconstituentsGifts",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -215,50 +232,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "amount": { "type": "number" },
-                "gift_date": { "type": "string" },
-                "gift_type_id": { "type": "integer" },
-                "payment_type_id": { "type": "integer" },
-                "campaign_id": { "type": "integer" },
-                "fund_id": { "type": "integer" },
-                "note": { "type": "string" }
-              },
-              "required": [
-                "amount",
-                "gift_date"
-              ]
+              "description": "JSON payload for createconstituentsGifts"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/gifts/search": {
       "get": {
-        "summary": "Search Gifts",
-        "description": "Search and retrieve recorded payments across all constituents.",
-        "operationId": "searchGifts",
+        "summary": "Search for Gifts",
+        "description": "Search for Gifts",
+        "operationId": "getgiftsSearch",
         "parameters": [
           {
-            "name": "start_date",
+            "name": "q",
             "in": "query",
-            "type": "string"
-          },
-          {
-            "name": "end_date",
-            "in": "query",
-            "type": "string"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "type": "integer",
-            "default": 100
+            "type": "string",
+            "required": true,
+            "description": "Search term"
           }
         ],
         "responses": {
@@ -270,14 +266,16 @@
     },
     "/gifts/{id}": {
       "get": {
-        "summary": "Get Gift Details",
-        "operationId": "getGift",
+        "summary": "Show Gift details",
+        "description": "Show Gift details",
+        "operationId": "getgifts",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -287,14 +285,16 @@
         }
       },
       "patch": {
-        "summary": "Update Gift Record",
-        "operationId": "updateGift",
+        "summary": "Update Gift",
+        "description": "Update Gift",
+        "operationId": "updategifts",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -302,11 +302,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "amount": { "type": "number" },
-                "gift_date": { "type": "string" },
-                "note": { "type": "string" }
-              }
+              "description": "JSON payload for updategifts"
             }
           }
         ],
@@ -317,14 +313,16 @@
         }
       },
       "delete": {
-        "summary": "Delete Gift Record",
-        "operationId": "deleteGift",
+        "summary": "Delete Gift",
+        "description": "Delete Gift",
+        "operationId": "deletegifts",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -336,8 +334,25 @@
     },
     "/campaigns": {
       "get": {
-        "summary": "List Campaigns",
-        "operationId": "listCampaigns",
+        "summary": "Fetch Campaigns",
+        "description": "Fetch Campaigns",
+        "operationId": "listcampaigns",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -345,8 +360,9 @@
         }
       },
       "post": {
-        "summary": "Create Campaign",
-        "operationId": "createCampaign",
+        "summary": "Create new Campaign",
+        "description": "Create new Campaign",
+        "operationId": "createcampaigns",
         "parameters": [
           {
             "name": "body",
@@ -354,33 +370,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" },
-                "description": { "type": "string" }
-              },
-              "required": [
-                "name"
-              ]
+              "description": "JSON payload for createcampaigns"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/campaigns/{id}": {
       "get": {
-        "summary": "Get Campaign",
-        "operationId": "getCampaign",
+        "summary": "Show Campaign details",
+        "description": "Show Campaign details",
+        "operationId": "getcampaigns",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -391,13 +403,15 @@
       },
       "patch": {
         "summary": "Update Campaign",
-        "operationId": "updateCampaign",
+        "description": "Update Campaign",
+        "operationId": "updatecampaigns",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -405,9 +419,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" }
-              }
+              "description": "JSON payload for updatecampaigns"
             }
           }
         ],
@@ -419,13 +431,15 @@
       },
       "delete": {
         "summary": "Delete Campaign",
-        "operationId": "deleteCampaign",
+        "description": "Delete Campaign",
+        "operationId": "deletecampaigns",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -437,8 +451,25 @@
     },
     "/funds": {
       "get": {
-        "summary": "List Funds",
-        "operationId": "listFunds",
+        "summary": "Fetch Funds",
+        "description": "Fetch Funds",
+        "operationId": "listfunds",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -446,8 +477,9 @@
         }
       },
       "post": {
-        "summary": "Create Fund",
-        "operationId": "createFund",
+        "summary": "Create new Fund",
+        "description": "Create new Fund",
+        "operationId": "createfunds",
         "parameters": [
           {
             "name": "body",
@@ -455,33 +487,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" },
-                "description": { "type": "string" }
-              },
-              "required": [
-                "name"
-              ]
+              "description": "JSON payload for createfunds"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/funds/{id}": {
       "get": {
-        "summary": "Get Fund",
-        "operationId": "getFund",
+        "summary": "Show Fund details",
+        "description": "Show Fund details",
+        "operationId": "getfunds",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -492,13 +520,15 @@
       },
       "patch": {
         "summary": "Update Fund",
-        "operationId": "updateFund",
+        "description": "Update Fund",
+        "operationId": "updatefunds",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -506,9 +536,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" }
-              }
+              "description": "JSON payload for updatefunds"
             }
           }
         ],
@@ -520,13 +548,15 @@
       },
       "delete": {
         "summary": "Delete Fund",
-        "operationId": "deleteFund",
+        "description": "Delete Fund",
+        "operationId": "deletefunds",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -538,8 +568,25 @@
     },
     "/events": {
       "get": {
-        "summary": "List Events",
-        "operationId": "listEvents",
+        "summary": "Fetch Events",
+        "description": "Fetch Events",
+        "operationId": "listevents",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -547,8 +594,9 @@
         }
       },
       "post": {
-        "summary": "Create Event",
-        "operationId": "createEvent",
+        "summary": "Create new Event",
+        "description": "Create new Event",
+        "operationId": "createevents",
         "parameters": [
           {
             "name": "body",
@@ -556,34 +604,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" },
-                "description": { "type": "string" },
-                "event_date": { "type": "string" }
-              },
-              "required": [
-                "name"
-              ]
+              "description": "JSON payload for createevents"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/events/{id}": {
       "get": {
-        "summary": "Get Event",
-        "operationId": "getEvent",
+        "summary": "Show Event details",
+        "description": "Show Event details",
+        "operationId": "getevents",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -594,13 +637,15 @@
       },
       "patch": {
         "summary": "Update Event",
-        "operationId": "updateEvent",
+        "description": "Update Event",
+        "operationId": "updateevents",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -608,9 +653,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" }
-              }
+              "description": "JSON payload for updateevents"
             }
           }
         ],
@@ -622,13 +665,15 @@
       },
       "delete": {
         "summary": "Delete Event",
-        "operationId": "deleteEvent",
+        "description": "Delete Event",
+        "operationId": "deleteevents",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -640,8 +685,25 @@
     },
     "/appeals": {
       "get": {
-        "summary": "List Appeals",
-        "operationId": "listAppeals",
+        "summary": "Fetch Appeals",
+        "description": "Fetch Appeals",
+        "operationId": "listappeals",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -649,8 +711,9 @@
         }
       },
       "post": {
-        "summary": "Create Appeal",
-        "operationId": "createAppeal",
+        "summary": "Create new Appeal",
+        "description": "Create new Appeal",
+        "operationId": "createappeals",
         "parameters": [
           {
             "name": "body",
@@ -658,33 +721,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" },
-                "description": { "type": "string" }
-              },
-              "required": [
-                "name"
-              ]
+              "description": "JSON payload for createappeals"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/appeals/{id}": {
       "get": {
-        "summary": "Get Appeal",
-        "operationId": "getAppeal",
+        "summary": "Show Appeal details",
+        "description": "Show Appeal details",
+        "operationId": "getappeals",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -695,13 +754,15 @@
       },
       "patch": {
         "summary": "Update Appeal",
-        "operationId": "updateAppeal",
+        "description": "Update Appeal",
+        "operationId": "updateappeals",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -709,9 +770,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" }
-              }
+              "description": "JSON payload for updateappeals"
             }
           }
         ],
@@ -723,13 +782,209 @@
       },
       "delete": {
         "summary": "Delete Appeal",
-        "operationId": "deleteAppeal",
+        "description": "Delete Appeal",
+        "operationId": "deleteappeals",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/appeals/{appeal_id}/appeal_requests": {
+      "get": {
+        "summary": "Fetch Appeal Requests for Appeal",
+        "description": "Fetch Appeal Requests for Appeal",
+        "operationId": "listappealsAppealRequests",
+        "parameters": [
+          {
+            "name": "appeal_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The appeal_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Appeal Request",
+        "description": "Create new Appeal Request",
+        "operationId": "createappealsAppealRequests",
+        "parameters": [
+          {
+            "name": "appeal_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The appeal_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createappealsAppealRequests"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/appeal_requests/{id}": {
+      "get": {
+        "summary": "Show Appeal Request details",
+        "description": "Show Appeal Request details",
+        "operationId": "getappeal_requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Appeal Request",
+        "description": "Update Appeal Request",
+        "operationId": "updateappeal_requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updateappeal_requests"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Appeal Request",
+        "description": "Delete Appeal Request",
+        "operationId": "deleteappeal_requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/appeal_requests": {
+      "get": {
+        "summary": "Fetch Appeal Requests for Constituent",
+        "description": "Fetch Appeal Requests for Constituent",
+        "operationId": "listconstituentsAppealRequests",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Appeal Request for Constituent",
+        "description": "Create new Appeal Request for Constituent",
+        "operationId": "createconstituentsAppealRequests",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createconstituentsAppealRequests"
+            }
           }
         ],
         "responses": {
@@ -741,14 +996,30 @@
     },
     "/constituents/{constituent_id}/street_addresses": {
       "get": {
-        "summary": "List Street Addresses",
-        "operationId": "listStreetAddresses",
+        "summary": "Fetch Street Addresses",
+        "description": "Fetch Street Addresses",
+        "operationId": "listconstituentsStreetAddresses",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -758,14 +1029,16 @@
         }
       },
       "post": {
-        "summary": "Create Street Address",
-        "operationId": "createStreetAddress",
+        "summary": "Create new Street Address",
+        "description": "Create new Street Address",
+        "operationId": "createconstituentsStreetAddresses",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -773,33 +1046,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "street": { "type": "string" },
-                "city": { "type": "string" },
-                "state": { "type": "string" },
-                "postal_code": { "type": "string" },
-                "is_primary": { "type": "boolean" }
-              }
+              "description": "JSON payload for createconstituentsStreetAddresses"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/street_addresses/{id}": {
       "get": {
-        "summary": "Get Street Address",
-        "operationId": "getStreetAddress",
+        "summary": "Show Street Address details",
+        "description": "Show Street Address details",
+        "operationId": "getstreet_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -810,13 +1079,15 @@
       },
       "patch": {
         "summary": "Update Street Address",
-        "operationId": "updateStreetAddress",
+        "description": "Update Street Address",
+        "operationId": "updatestreet_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -824,9 +1095,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "street": { "type": "string" }
-              }
+              "description": "JSON payload for updatestreet_addresses"
             }
           }
         ],
@@ -838,13 +1107,15 @@
       },
       "delete": {
         "summary": "Delete Street Address",
-        "operationId": "deleteStreetAddress",
+        "description": "Delete Street Address",
+        "operationId": "deletestreet_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -856,14 +1127,30 @@
     },
     "/constituents/{constituent_id}/phone_numbers": {
       "get": {
-        "summary": "List Phone Numbers",
-        "operationId": "listPhoneNumbers",
+        "summary": "Fetch Phone Numbers",
+        "description": "Fetch Phone Numbers",
+        "operationId": "listconstituentsPhoneNumbers",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -873,14 +1160,16 @@
         }
       },
       "post": {
-        "summary": "Create Phone Number",
-        "operationId": "createPhoneNumber",
+        "summary": "Create new Phone Number",
+        "description": "Create new Phone Number",
+        "operationId": "createconstituentsPhoneNumbers",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -888,33 +1177,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "number": { "type": "string" },
-                "is_primary": { "type": "boolean" }
-              },
-              "required": [
-                "number"
-              ]
+              "description": "JSON payload for createconstituentsPhoneNumbers"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/phone_numbers/{id}": {
       "get": {
-        "summary": "Get Phone Number",
-        "operationId": "getPhoneNumber",
+        "summary": "Show Phone Number details",
+        "description": "Show Phone Number details",
+        "operationId": "getphone_numbers",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -925,13 +1210,15 @@
       },
       "patch": {
         "summary": "Update Phone Number",
-        "operationId": "updatePhoneNumber",
+        "description": "Update Phone Number",
+        "operationId": "updatephone_numbers",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -939,9 +1226,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "number": { "type": "string" }
-              }
+              "description": "JSON payload for updatephone_numbers"
             }
           }
         ],
@@ -953,13 +1238,15 @@
       },
       "delete": {
         "summary": "Delete Phone Number",
-        "operationId": "deletePhoneNumber",
+        "description": "Delete Phone Number",
+        "operationId": "deletephone_numbers",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -971,14 +1258,30 @@
     },
     "/constituents/{constituent_id}/email_addresses": {
       "get": {
-        "summary": "List Email Addresses",
-        "operationId": "listEmailAddresses",
+        "summary": "Fetch Email Addresses",
+        "description": "Fetch Email Addresses",
+        "operationId": "listconstituentsEmailAddresses",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -988,14 +1291,16 @@
         }
       },
       "post": {
-        "summary": "Create Email Address",
-        "operationId": "createEmailAddress",
+        "summary": "Create new Email Address",
+        "description": "Create new Email Address",
+        "operationId": "createconstituentsEmailAddresses",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -1003,33 +1308,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "address": { "type": "string" },
-                "is_primary": { "type": "boolean" }
-              },
-              "required": [
-                "address"
-              ]
+              "description": "JSON payload for createconstituentsEmailAddresses"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/email_addresses/{id}": {
       "get": {
-        "summary": "Get Email Address",
-        "operationId": "getEmailAddress",
+        "summary": "Show Email Address details",
+        "description": "Show Email Address details",
+        "operationId": "getemail_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1040,13 +1341,15 @@
       },
       "patch": {
         "summary": "Update Email Address",
-        "operationId": "updateEmailAddress",
+        "description": "Update Email Address",
+        "operationId": "updateemail_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -1054,9 +1357,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "address": { "type": "string" }
-              }
+              "description": "JSON payload for updateemail_addresses"
             }
           }
         ],
@@ -1068,13 +1369,15 @@
       },
       "delete": {
         "summary": "Delete Email Address",
-        "operationId": "deleteEmailAddress",
+        "description": "Delete Email Address",
+        "operationId": "deleteemail_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1086,14 +1389,30 @@
     },
     "/constituents/{constituent_id}/web_addresses": {
       "get": {
-        "summary": "List Web Addresses",
-        "operationId": "listWebAddresses",
+        "summary": "Fetch Web Addresses",
+        "description": "Fetch Web Addresses",
+        "operationId": "listconstituentsWebAddresses",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -1103,14 +1422,16 @@
         }
       },
       "post": {
-        "summary": "Create Web Address",
-        "operationId": "createWebAddress",
+        "summary": "Create new Web Address",
+        "description": "Create new Web Address",
+        "operationId": "createconstituentsWebAddresses",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -1118,33 +1439,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "url": { "type": "string" },
-                "is_primary": { "type": "boolean" }
-              },
-              "required": [
-                "url"
-              ]
+              "description": "JSON payload for createconstituentsWebAddresses"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/web_addresses/{id}": {
       "get": {
-        "summary": "Get Web Address",
-        "operationId": "getWebAddress",
+        "summary": "Show Web Address details",
+        "description": "Show Web Address details",
+        "operationId": "getweb_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1155,13 +1472,15 @@
       },
       "patch": {
         "summary": "Update Web Address",
-        "operationId": "updateWebAddress",
+        "description": "Update Web Address",
+        "operationId": "updateweb_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -1169,9 +1488,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "url": { "type": "string" }
-              }
+              "description": "JSON payload for updateweb_addresses"
             }
           }
         ],
@@ -1183,13 +1500,291 @@
       },
       "delete": {
         "summary": "Delete Web Address",
-        "operationId": "deleteWebAddress",
+        "description": "Delete Web Address",
+        "operationId": "deleteweb_addresses",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/contact_reports": {
+      "get": {
+        "summary": "Fetch Contact Reports for Account",
+        "description": "Fetch Contact Reports for Account",
+        "operationId": "listcontact_reports",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/contact_reports/search": {
+      "get": {
+        "summary": "Search for Contact Reports",
+        "description": "Search for Contact Reports",
+        "operationId": "getcontact_reportsSearch",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "Search term"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/contact_reports/{id}": {
+      "get": {
+        "summary": "Show Contact Report details",
+        "description": "Show Contact Report details",
+        "operationId": "getcontact_reports",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Contact Report",
+        "description": "Update Contact Report",
+        "operationId": "updatecontact_reports",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updatecontact_reports"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Contact Report",
+        "description": "Delete Contact Report",
+        "operationId": "deletecontact_reports",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/contact_reports": {
+      "get": {
+        "summary": "Fetch Contact Reports for Constituent",
+        "description": "Fetch Contact Reports for Constituent",
+        "operationId": "listconstituentsContactReports",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Contact Report",
+        "description": "Create new Contact Report",
+        "operationId": "createconstituentsContactReports",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createconstituentsContactReports"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/notes": {
+      "get": {
+        "summary": "Fetch Notes for Account",
+        "description": "Fetch Notes for Account",
+        "operationId": "listnotes",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/notes/{id}": {
+      "get": {
+        "summary": "Show Note details",
+        "description": "Show Note details",
+        "operationId": "getnotes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Note",
+        "description": "Update Note",
+        "operationId": "updatenotes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updatenotes"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Note",
+        "description": "Delete Note",
+        "operationId": "deletenotes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1201,14 +1796,30 @@
     },
     "/constituents/{constituent_id}/notes": {
       "get": {
-        "summary": "List Constituent Notes",
-        "operationId": "listConstituentNotes",
+        "summary": "Fetch Notes for Constituent",
+        "description": "Fetch Notes for Constituent",
+        "operationId": "listconstituentsNotes",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -1218,14 +1829,16 @@
         }
       },
       "post": {
-        "summary": "Create Note",
-        "operationId": "createNote",
+        "summary": "Create new Note",
+        "description": "Create new Note",
+        "operationId": "createconstituentsNotes",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -1233,35 +1846,78 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "text": { "type": "string" },
-                "note_date": { "type": "string" },
-                "note_type": { "type": "string" },
-                "subject": { "type": "string" }
-              },
-              "required": [
-                "text"
-              ]
+              "description": "JSON payload for createconstituentsNotes"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
-    "/notes/{id}": {
+    "/volunteer_times": {
       "get": {
-        "summary": "Get Note Details",
-        "operationId": "getNote",
+        "summary": "Fetch Volunteer Times for Account",
+        "description": "Fetch Volunteer Times for Account",
+        "operationId": "listvolunteer_times",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/volunteer_times/search": {
+      "get": {
+        "summary": "Search for Volunteer Times",
+        "description": "Search for Volunteer Times",
+        "operationId": "getvolunteer_timesSearch",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "Search term"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/volunteer_times/{id}": {
+      "get": {
+        "summary": "Show Volunteer Time details",
+        "description": "Show Volunteer Time details",
+        "operationId": "getvolunteer_times",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1271,14 +1927,16 @@
         }
       },
       "patch": {
-        "summary": "Update Note Record",
-        "operationId": "updateNote",
+        "summary": "Update Volunteer Time",
+        "description": "Update Volunteer Time",
+        "operationId": "updatevolunteer_times",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -1286,9 +1944,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "text": { "type": "string" }
-              }
+              "description": "JSON payload for updatevolunteer_times"
             }
           }
         ],
@@ -1299,14 +1955,16 @@
         }
       },
       "delete": {
-        "summary": "Delete Note Record",
-        "operationId": "deleteNote",
+        "summary": "Delete Volunteer Time",
+        "description": "Delete Volunteer Time",
+        "operationId": "deletevolunteer_times",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1316,16 +1974,32 @@
         }
       }
     },
-    "/constituents/{constituent_id}/group_memberships": {
+    "/constituents/{constituent_id}/volunteer_times": {
       "get": {
-        "summary": "List Group Memberships",
-        "operationId": "listGroupMemberships",
+        "summary": "Fetch Volunteer Times for Constituent",
+        "description": "Fetch Volunteer Times for Constituent",
+        "operationId": "listconstituentsVolunteerTimes",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -1335,14 +2009,16 @@
         }
       },
       "post": {
-        "summary": "Add Constituent to Group",
-        "operationId": "createGroupMembership",
+        "summary": "Create new Volunteer Time",
+        "description": "Create new Volunteer Time",
+        "operationId": "createconstituentsVolunteerTimes",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -1350,32 +2026,92 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "group_id": { "type": "integer" }
-              },
-              "required": [
-                "group_id"
-              ]
+              "description": "JSON payload for createconstituentsVolunteerTimes"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
-    "/group_memberships/{id}": {
+    "/constituents/{constituent_id}/constituent_relationships": {
       "get": {
-        "summary": "Get Group Membership",
-        "operationId": "getGroupMembership",
+        "summary": "Fetch Constituent Relationships for a Constituent",
+        "description": "Fetch Constituent Relationships for a Constituent",
+        "operationId": "listconstituentsConstituentRelationships",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Constituent Relationship",
+        "description": "Create new Constituent Relationship",
+        "operationId": "createconstituentsConstituentRelationships",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createconstituentsConstituentRelationships"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituent_relationships/{id}": {
+      "get": {
+        "summary": "Show Constituent Relationship details",
+        "description": "Show Constituent Relationship details",
+        "operationId": "getconstituent_relationships",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1385,14 +2121,16 @@
         }
       },
       "patch": {
-        "summary": "Update Group Membership",
-        "operationId": "updateGroupMembership",
+        "summary": "Update Constituent Relationship",
+        "description": "Update Constituent Relationship",
+        "operationId": "updateconstituent_relationships",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -1400,9 +2138,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "group_id": { "type": "integer" }
-              }
+              "description": "JSON payload for updateconstituent_relationships"
             }
           }
         ],
@@ -1413,14 +2149,175 @@
         }
       },
       "delete": {
-        "summary": "Remove Constituent from Group",
-        "operationId": "deleteGroupMembership",
+        "summary": "Delete Constituent Relationship",
+        "description": "Delete Constituent Relationship",
+        "operationId": "deleteconstituent_relationships",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/class_affiliation_types": {
+      "get": {
+        "summary": "Fetch Class Affiliation Types",
+        "description": "Fetch Class Affiliation Types",
+        "operationId": "listclass_affiliation_types",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/class_affiliations": {
+      "get": {
+        "summary": "Fetch Class Affiliations",
+        "description": "Fetch Class Affiliations",
+        "operationId": "listconstituentsClassAffiliations",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Class Affiliation",
+        "description": "Create new Class Affiliation",
+        "operationId": "createconstituentsClassAffiliations",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createconstituentsClassAffiliations"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/class_affiliations/{id}": {
+      "get": {
+        "summary": "Show Class Affiliation details",
+        "description": "Show Class Affiliation details",
+        "operationId": "getclass_affiliations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Class Affiliation",
+        "description": "Update Class Affiliation",
+        "operationId": "updateclass_affiliations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updateclass_affiliations"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Class Affiliation",
+        "description": "Delete Class Affiliation",
+        "operationId": "deleteclass_affiliations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1432,8 +2329,25 @@
     },
     "/groups": {
       "get": {
-        "summary": "List Groups",
-        "operationId": "listGroups",
+        "summary": "Fetch Groups",
+        "description": "Fetch Groups",
+        "operationId": "listgroups",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -1441,8 +2355,9 @@
         }
       },
       "post": {
-        "summary": "Create Group",
-        "operationId": "createGroup",
+        "summary": "Create new Group",
+        "description": "Create new Group",
+        "operationId": "creategroups",
         "parameters": [
           {
             "name": "body",
@@ -1450,32 +2365,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" }
-              },
-              "required": [
-                "name"
-              ]
+              "description": "JSON payload for creategroups"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/groups/{id}": {
       "get": {
-        "summary": "Get Group",
-        "operationId": "getGroup",
+        "summary": "Show Group details",
+        "description": "Show Group details",
+        "operationId": "getgroups",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1486,13 +2398,15 @@
       },
       "patch": {
         "summary": "Update Group",
-        "operationId": "updateGroup",
+        "description": "Update Group",
+        "operationId": "updategroups",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -1500,9 +2414,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "name": { "type": "string" }
-              }
+              "description": "JSON payload for updategroups"
             }
           }
         ],
@@ -1514,13 +2426,146 @@
       },
       "delete": {
         "summary": "Delete Group",
-        "operationId": "deleteGroup",
+        "description": "Delete Group",
+        "operationId": "deletegroups",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/group_memberships": {
+      "get": {
+        "summary": "Fetch Group Memberships",
+        "description": "Fetch Group Memberships",
+        "operationId": "listconstituentsGroupMemberships",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Group Membership",
+        "description": "Create new Group Membership",
+        "operationId": "createconstituentsGroupMemberships",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createconstituentsGroupMemberships"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/group_memberships/{id}": {
+      "get": {
+        "summary": "Show Group Membership details",
+        "description": "Show Group Membership details",
+        "operationId": "getgroup_memberships",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Group Membership",
+        "description": "Update Group Membership",
+        "operationId": "updategroup_memberships",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updategroup_memberships"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Group Membership",
+        "description": "Delete Group Membership",
+        "operationId": "deletegroup_memberships",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1532,14 +2577,30 @@
     },
     "/constituents/{constituent_id}/memberships": {
       "get": {
-        "summary": "List Constituent Memberships",
-        "operationId": "listConstituentMemberships",
+        "summary": "Fetch Memberships",
+        "description": "Fetch Memberships",
+        "operationId": "listconstituentsMemberships",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
           }
         ],
         "responses": {
@@ -1549,14 +2610,16 @@
         }
       },
       "post": {
-        "summary": "Add Membership to Constituent",
-        "operationId": "createMembership",
+        "summary": "Create new Membership",
+        "description": "Create new Membership",
+        "operationId": "createconstituentsMemberships",
         "parameters": [
           {
             "name": "constituent_id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The constituent_id parameter"
           },
           {
             "name": "body",
@@ -1564,34 +2627,29 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "membership_level_id": { "type": "integer" },
-                "start_date": { "type": "string" },
-                "end_date": { "type": "string" }
-              },
-              "required": [
-                "membership_level_id"
-              ]
+              "description": "JSON payload for createconstituentsMemberships"
             }
           }
         ],
         "responses": {
-          "201": {
-            "description": "Created"
+          "200": {
+            "description": "Success"
           }
         }
       }
     },
     "/memberships/{id}": {
       "get": {
-        "summary": "Get Membership details",
-        "operationId": "getMembership",
+        "summary": "Show Membership details",
+        "description": "Show Membership details",
+        "operationId": "getmemberships",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           }
         ],
         "responses": {
@@ -1601,14 +2659,16 @@
         }
       },
       "patch": {
-        "summary": "Update Membership record",
-        "operationId": "updateMembership",
+        "summary": "Update Membership",
+        "description": "Update Membership",
+        "operationId": "updatememberships",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
           },
           {
             "name": "body",
@@ -1616,9 +2676,7 @@
             "required": true,
             "schema": {
               "type": "object",
-              "properties": {
-                "membership_level_id": { "type": "integer" }
-              }
+              "description": "JSON payload for updatememberships"
             }
           }
         ],
@@ -1629,14 +2687,962 @@
         }
       },
       "delete": {
-        "summary": "Delete Membership record",
-        "operationId": "deleteMembership",
+        "summary": "Delete Membership",
+        "description": "Delete Membership",
+        "operationId": "deletememberships",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "type": "integer"
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/membership_levels": {
+      "get": {
+        "summary": "Fetch Membership Levels",
+        "description": "Fetch Membership Levels",
+        "operationId": "listmembership_levels",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Membership Level",
+        "description": "Create new Membership Level",
+        "operationId": "createmembership_levels",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createmembership_levels"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/membership_levels/{id}": {
+      "get": {
+        "summary": "Show Membership Level details",
+        "description": "Show Membership Level details",
+        "operationId": "getmembership_levels",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Membership Level",
+        "description": "Update Membership Level",
+        "operationId": "updatemembership_levels",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updatemembership_levels"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Membership Level",
+        "description": "Delete Membership Level",
+        "operationId": "deletemembership_levels",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/invitations": {
+      "get": {
+        "summary": "Fetch Invitations for Constituent",
+        "description": "Fetch Invitations for Constituent",
+        "operationId": "listconstituentsInvitations",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Invitation for Constituent",
+        "description": "Create new Invitation for Constituent",
+        "operationId": "createconstituentsInvitations",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createconstituentsInvitations"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/events/{event_id}/invitations": {
+      "get": {
+        "summary": "Fetch Invitations for Event",
+        "description": "Fetch Invitations for Event",
+        "operationId": "listeventsInvitations",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The event_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Invitation",
+        "description": "Create new Invitation",
+        "operationId": "createeventsInvitations",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The event_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createeventsInvitations"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/invitations/{id}": {
+      "get": {
+        "summary": "Show Invitation details",
+        "description": "Show Invitation details",
+        "operationId": "getinvitations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Invitation",
+        "description": "Update Invitation",
+        "operationId": "updateinvitations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updateinvitations"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Invitation",
+        "description": "Delete Invitation",
+        "operationId": "deleteinvitations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "summary": "Fetch Categories for Account",
+        "description": "Fetch Categories for Account",
+        "operationId": "listcategories",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Category",
+        "description": "Create new Category",
+        "operationId": "createcategories",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createcategories"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/categories/{category_id}/keywords": {
+      "get": {
+        "summary": "Fetch Keywords",
+        "description": "Fetch Keywords",
+        "operationId": "listcategoriesKeywords",
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The category_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create new Keyword",
+        "description": "Create new Keyword",
+        "operationId": "createcategoriesKeywords",
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The category_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createcategoriesKeywords"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/categories/{id}": {
+      "get": {
+        "summary": "Show Category details",
+        "description": "Show Category details",
+        "operationId": "getcategories",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Category",
+        "description": "Update Category",
+        "operationId": "updatecategories",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updatecategories"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Category",
+        "description": "Delete Category",
+        "operationId": "deletecategories",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/categories": {
+      "get": {
+        "summary": "Fetch Categories for Constituent",
+        "description": "Fetch Categories for Constituent",
+        "operationId": "listconstituentsCategories",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/keywords": {
+      "post": {
+        "summary": "Add Keyword",
+        "description": "Add Keyword",
+        "operationId": "createconstituentsKeywords",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for createconstituentsKeywords"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/keywords/{id}": {
+      "delete": {
+        "summary": "Remove Keyword",
+        "description": "Remove Keyword",
+        "operationId": "deleteconstituentsKeywords",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The constituent_id parameter"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/keywords/{id}": {
+      "get": {
+        "summary": "Show Keyword details",
+        "description": "Show Keyword details",
+        "operationId": "getkeywords",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Keyword",
+        "description": "Update Keyword",
+        "operationId": "updatekeywords",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "description": "JSON payload for updatekeywords"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Keyword",
+        "description": "Delete Keyword",
+        "operationId": "deletekeywords",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The id parameter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/lists": {
+      "get": {
+        "summary": "Fetch Lists",
+        "description": "Fetch Lists",
+        "operationId": "listlists",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/lists/search": {
+      "get": {
+        "summary": "Search for Lists",
+        "description": "Search for Lists",
+        "operationId": "getlistsSearch",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "Search term"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/mailing_templates": {
+      "get": {
+        "summary": "Fetch Mailing Templates",
+        "description": "Fetch Mailing Templates",
+        "operationId": "listmailing_templates",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/team_members": {
+      "get": {
+        "summary": "Fetch Team Members",
+        "description": "Fetch Team Members",
+        "operationId": "listteam_members",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/attributes": {
+      "get": {
+        "summary": "Fetch Custom Attributes",
+        "description": "Fetch Custom Attributes",
+        "operationId": "listattributes",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/gift_categories": {
+      "get": {
+        "summary": "Fetch Gift Categories",
+        "description": "Fetch Gift Categories",
+        "operationId": "listgift_categories",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/gift_types": {
+      "get": {
+        "summary": "Fetch Gift Types",
+        "description": "Fetch Gift Types",
+        "operationId": "listgift_types",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/payment_types": {
+      "get": {
+        "summary": "Fetch Payment Types",
+        "description": "Fetch Payment Types",
+        "operationId": "listpayment_types",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/relationship_types": {
+      "get": {
+        "summary": "Fetch Relationship Types",
+        "description": "Fetch Relationship Types",
+        "operationId": "listrelationship_types",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/types": {
+      "get": {
+        "summary": "Fetch Types for Account",
+        "description": "Fetch Types for Account",
+        "operationId": "listtypes",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 50,
+            "description": "Maximum records to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "type": "integer",
+            "default": 0,
+            "description": "Number of records to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/types/{type}": {
+      "get": {
+        "summary": "Fetch Values for Type",
+        "description": "Fetch Values for Type",
+        "operationId": "gettypes",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "description": "The type parameter"
           }
         ],
         "responses": {
