@@ -1371,7 +1371,7 @@ const TOOLS = [
 
 // ─── Handler Dispatcher ──────────────────────────────────────────────────────
 
-async function handleTool(name, args) {
+async function handleTool(name, args, authInfo) {
   switch (name) {
     // ── 1. Constituents & Core Management ────────────────────────────────────
 
@@ -2334,17 +2334,121 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return { tools };
 });
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
+server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
   try {
     assertWriteAllowed(req.params.name);
-    return await handleTool(req.params.name, req.params.arguments ?? {});
+    return await handleTool(req.params.name, req.params.arguments ?? {}, extra.authInfo);
   } catch (err) {
     return toError(err);
   }
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error(
-  `LGL MCP server running successfully${READ_ONLY_MODE ? " (read-only mode)" : ""}`
-);
+// Check if running in HTTP/SSE transport mode
+const args = process.argv.slice(2);
+const isHttpMode = args.includes("--http") || args.includes("-http") || args.includes("--sse") || args.includes("-sse");
+
+if (isHttpMode) {
+  const http = await import("node:http");
+  const { parse } = await import("node:url");
+  const crypto = await import("node:crypto");
+  const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
+
+  // Get port from CLI args (e.g., --port 3000) or env variable, default to 3000
+  let port = 3000;
+  if (process.env.PORT) {
+    port = parseInt(process.env.PORT, 10);
+  }
+  const portIndex = args.indexOf("--port");
+  if (portIndex !== -1 && portIndex + 1 < args.length) {
+    port = parseInt(args[portIndex + 1], 10);
+  }
+
+  // Stateful Streamable HTTP Transport
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => crypto.randomUUID()
+  });
+
+  await server.connect(transport);
+
+  const httpServer = http.createServer(async (req, res) => {
+    const parsedUrl = parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+
+    // CORS headers
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (pathname === "/mcp") {
+      // ─── Authentication Middleware ──────────────────────────────────────────
+      const authHeader = req.headers["authorization"];
+      let token = "";
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      }
+
+      const expectedToken = process.env.LGL_MCP_TOKEN;
+      if (expectedToken) {
+        if (token !== expectedToken) {
+          res.writeHead(401, { "Content-Type": "text/plain" });
+          res.end("Unauthorized: Invalid or missing LGL_MCP_TOKEN Bearer token.");
+          return;
+        }
+      }
+
+      // Attach auth info to request
+      req.auth = {
+        token,
+        scopes: ["all"],
+        clientId: "mcp-client"
+      };
+
+      // ─── Streamable HTTP Request Handler ────────────────────────────────────
+      if (req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => { body += chunk; });
+        req.on("end", async () => {
+          try {
+            const parsed = body ? JSON.parse(body) : undefined;
+            await transport.handleRequest(req, res, parsed);
+          } catch (err) {
+            console.error("Error parsing JSON body or handling request:", err);
+            res.writeHead(400, { "Content-Type": "text/plain" });
+            res.end(`Bad Request: ${err.message}`);
+          }
+        });
+      } else {
+        // GET requests (for establishing the SSE event-stream)
+        await transport.handleRequest(req, res);
+      }
+      return;
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
+  });
+
+  httpServer.listen(port, () => {
+    console.error(`LGL MCP server running over Streamable HTTP on http://localhost:${port}/mcp`);
+    if (process.env.LGL_MCP_TOKEN) {
+      console.error("Secure Bearer Token Authentication is ENABLED.");
+    } else {
+      console.error("WARNING: LGL_MCP_TOKEN is not set. Running WITHOUT authentication.");
+    }
+  });
+
+} else {
+  // Stdio Transport (Default)
+  const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error(
+    `LGL MCP server running successfully in stdio mode${READ_ONLY_MODE ? " (read-only mode)" : ""}`
+  );
+}
