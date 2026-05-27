@@ -1,19 +1,26 @@
 {
-  "openapi": "3.0.0",
+  "swagger": "2.0",
   "info": {
     "title": "Little Green Light CRM API",
     "description": "Complete REST API connector for the Little Green Light donor database. Manage constituents, gifts, campaigns, funds, appeals, contact methods, groups, and membership levels.",
     "version": "1.0.0"
   },
-  "servers": [
-    {
-      "url": "https://api.littlegreenlight.com/api/v1",
-      "description": "Production LGL API Server"
-    }
+  "host": "api.littlegreenlight.com",
+  "basePath": "/api/v1",
+  "schemes": [
+    "https"
   ],
+  "securityDefinitions": {
+    "api_key": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header",
+      "description": "Enter your LGL API key prefixed with 'Bearer ' (e.g. 'Bearer 1Qbrh8...')."
+    }
+  },
   "security": [
     {
-      "BearerAuth": []
+      "api_key": []
     }
   ],
   "paths": {
@@ -28,39 +35,49 @@
             "in": "query",
             "description": "Maximum records to return",
             "required": false,
-            "schema": { "type": "integer", "default": 50 }
+            "type": "integer",
+            "default": 50
           },
           {
             "name": "offset",
             "in": "query",
             "description": "Number of records to skip",
             "required": false,
-            "schema": { "type": "integer", "default": 0 }
+            "type": "integer",
+            "default": 0
           }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Constituent",
         "description": "Create a new constituent record.",
         "operationId": "createConstituent",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "first_name": { "type": "string" },
-                  "last_name": { "type": "string" },
-                  "organization_name": { "type": "string" },
-                  "constituent_type": { "type": "string", "enum": ["individual", "organization"], "default": "individual" }
-                }
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "first_name": { "type": "string" },
+                "last_name": { "type": "string" },
+                "organization_name": { "type": "string" },
+                "constituent_type": { "type": "string", "enum": ["individual", "organization"], "default": "individual" }
               }
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/constituents/search": {
@@ -74,17 +91,22 @@
             "in": "query",
             "description": "The search term",
             "required": true,
-            "schema": { "type": "string" }
+            "type": "string"
           },
           {
             "name": "limit",
             "in": "query",
             "description": "Maximum records to return",
             "required": false,
-            "schema": { "type": "integer", "default": 20 }
+            "type": "integer",
+            "default": 20
           }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       }
     },
     "/constituents/{id}": {
@@ -93,43 +115,68 @@
         "description": "Fetch a single constituent's comprehensive record by ID.",
         "operationId": "getConstituent",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "patch": {
         "summary": "Update Constituent",
         "description": "Modify an existing constituent's core fields.",
         "operationId": "updateConstituent",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "first_name": { "type": "string" },
-                  "last_name": { "type": "string" },
-                  "organization_name": { "type": "string" },
-                  "constituent_type": { "type": "string", "enum": ["individual", "organization"] }
-                }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "first_name": { "type": "string" },
+                "last_name": { "type": "string" },
+                "organization_name": { "type": "string" },
+                "constituent_type": { "type": "string", "enum": ["individual", "organization"] }
               }
             }
           }
-        },
-        "responses": { "200": { "description": "Success" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "delete": {
         "summary": "Delete Constituent",
         "description": "Remove a constituent record by ID.",
         "operationId": "deleteConstituent",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       }
     },
     "/constituents/{constituent_id}/gifts": {
@@ -138,38 +185,57 @@
         "description": "Fetch all gifts recorded for a specific constituent.",
         "operationId": "listConstituentGifts",
         "parameters": [
-          { "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Record Gift",
         "description": "Log a new fundraising donation/gift for a constituent.",
         "operationId": "createGift",
         "parameters": [
-          { "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "amount": { "type": "number" },
-                  "gift_date": { "type": "string" },
-                  "gift_type_id": { "type": "integer" },
-                  "payment_type_id": { "type": "integer" },
-                  "campaign_id": { "type": "integer" },
-                  "fund_id": { "type": "integer" },
-                  "note": { "type": "string" }
-                },
-                "required": ["amount", "gift_date"]
-              }
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "amount": { "type": "number" },
+                "gift_date": { "type": "string" },
+                "gift_type_id": { "type": "integer" },
+                "payment_type_id": { "type": "integer" },
+                "campaign_id": { "type": "integer" },
+                "fund_id": { "type": "integer" },
+                "note": { "type": "string" }
+              },
+              "required": [
+                "amount",
+                "gift_date"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/gifts/search": {
@@ -178,11 +244,28 @@
         "description": "Search and retrieve recorded payments across all constituents.",
         "operationId": "searchGifts",
         "parameters": [
-          { "name": "start_date", "in": "query", "schema": { "type": "string" } },
-          { "name": "end_date", "in": "query", "schema": { "type": "string" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+          {
+            "name": "start_date",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "integer",
+            "default": 100
+          }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       }
     },
     "/gifts/{id}": {
@@ -190,429 +273,1377 @@
         "summary": "Get Gift Details",
         "operationId": "getGift",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "patch": {
         "summary": "Update Gift Record",
         "operationId": "updateGift",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "amount": { "type": "number" },
-                  "gift_date": { "type": "string" },
-                  "note": { "type": "string" }
-                }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "amount": { "type": "number" },
+                "gift_date": { "type": "string" },
+                "note": { "type": "string" }
               }
             }
           }
-        },
-        "responses": { "200": { "description": "Success" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "delete": {
         "summary": "Delete Gift Record",
         "operationId": "deleteGift",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
         ],
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       }
     },
     "/campaigns": {
       "get": {
         "summary": "List Campaigns",
         "operationId": "listCampaigns",
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Campaign",
         "operationId": "createCampaign",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" },
-                  "description": { "type": "string" }
-                },
-                "required": ["name"]
-              }
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "description": { "type": "string" }
+              },
+              "required": [
+                "name"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/campaigns/{id}": {
-      "get": { "summary": "Get Campaign", "operationId": "getCampaign", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Campaign", "operationId": "updateCampaign", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Campaign", "operationId": "deleteCampaign", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Campaign",
+        "operationId": "getCampaign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Campaign",
+        "operationId": "updateCampaign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Campaign",
+        "operationId": "deleteCampaign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/funds": {
       "get": {
         "summary": "List Funds",
         "operationId": "listFunds",
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Fund",
         "operationId": "createFund",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" },
-                  "description": { "type": "string" }
-                },
-                "required": ["name"]
-              }
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "description": { "type": "string" }
+              },
+              "required": [
+                "name"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/funds/{id}": {
-      "get": { "summary": "Get Fund", "operationId": "getFund", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Fund", "operationId": "updateFund", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Fund", "operationId": "deleteFund", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Fund",
+        "operationId": "getFund",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Fund",
+        "operationId": "updateFund",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Fund",
+        "operationId": "deleteFund",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/events": {
       "get": {
         "summary": "List Events",
         "operationId": "listEvents",
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Event",
         "operationId": "createEvent",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" },
-                  "description": { "type": "string" },
-                  "event_date": { "type": "string" }
-                },
-                "required": ["name"]
-              }
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "description": { "type": "string" },
+                "event_date": { "type": "string" }
+              },
+              "required": [
+                "name"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/events/{id}": {
-      "get": { "summary": "Get Event", "operationId": "getEvent", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Event", "operationId": "updateEvent", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Event", "operationId": "deleteEvent", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Event",
+        "operationId": "getEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Event",
+        "operationId": "updateEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Event",
+        "operationId": "deleteEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/appeals": {
       "get": {
         "summary": "List Appeals",
         "operationId": "listAppeals",
-        "responses": { "200": { "description": "Success" } }
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Appeal",
         "operationId": "createAppeal",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" },
-                  "description": { "type": "string" }
-                },
-                "required": ["name"]
-              }
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "description": { "type": "string" }
+              },
+              "required": [
+                "name"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/appeals/{id}": {
-      "get": { "summary": "Get Appeal", "operationId": "getAppeal", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Appeal", "operationId": "updateAppeal", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Appeal", "operationId": "deleteAppeal", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Appeal",
+        "operationId": "getAppeal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Appeal",
+        "operationId": "updateAppeal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Appeal",
+        "operationId": "deleteAppeal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/constituents/{constituent_id}/street_addresses": {
       "get": {
         "summary": "List Street Addresses",
         "operationId": "listStreetAddresses",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Success" } }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Street Address",
         "operationId": "createStreetAddress",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "street": { "type": "string" },
-                  "city": { "type": "string" },
-                  "state": { "type": "string" },
-                  "postal_code": { "type": "string" },
-                  "is_primary": { "type": "boolean" }
-                }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "street": { "type": "string" },
+                "city": { "type": "string" },
+                "state": { "type": "string" },
+                "postal_code": { "type": "string" },
+                "is_primary": { "type": "boolean" }
               }
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/street_addresses/{id}": {
-      "get": { "summary": "Get Street Address", "operationId": "getStreetAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Street Address", "operationId": "updateStreetAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "street": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Street Address", "operationId": "deleteStreetAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Street Address",
+        "operationId": "getStreetAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Street Address",
+        "operationId": "updateStreetAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "street": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Street Address",
+        "operationId": "deleteStreetAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/constituents/{constituent_id}/phone_numbers": {
       "get": {
         "summary": "List Phone Numbers",
         "operationId": "listPhoneNumbers",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Success" } }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Phone Number",
         "operationId": "createPhoneNumber",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "number": { "type": "string" },
-                  "is_primary": { "type": "boolean" }
-                },
-                "required": ["number"]
-              }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "number": { "type": "string" },
+                "is_primary": { "type": "boolean" }
+              },
+              "required": [
+                "number"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/phone_numbers/{id}": {
-      "get": { "summary": "Get Phone Number", "operationId": "getPhoneNumber", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Phone Number", "operationId": "updatePhoneNumber", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "number": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Phone Number", "operationId": "deletePhoneNumber", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Phone Number",
+        "operationId": "getPhoneNumber",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Phone Number",
+        "operationId": "updatePhoneNumber",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "number": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Phone Number",
+        "operationId": "deletePhoneNumber",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/constituents/{constituent_id}/email_addresses": {
       "get": {
         "summary": "List Email Addresses",
         "operationId": "listEmailAddresses",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Success" } }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Email Address",
         "operationId": "createEmailAddress",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "address": { "type": "string" },
-                  "is_primary": { "type": "boolean" }
-                },
-                "required": ["address"]
-              }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "address": { "type": "string" },
+                "is_primary": { "type": "boolean" }
+              },
+              "required": [
+                "address"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/email_addresses/{id}": {
-      "get": { "summary": "Get Email Address", "operationId": "getEmailAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Email Address", "operationId": "updateEmailAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "address": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Email Address", "operationId": "deleteEmailAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Email Address",
+        "operationId": "getEmailAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Email Address",
+        "operationId": "updateEmailAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "address": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Email Address",
+        "operationId": "deleteEmailAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/constituents/{constituent_id}/web_addresses": {
       "get": {
         "summary": "List Web Addresses",
         "operationId": "listWebAddresses",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Success" } }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Web Address",
         "operationId": "createWebAddress",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "url": { "type": "string" },
-                  "is_primary": { "type": "boolean" }
-                },
-                "required": ["url"]
-              }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string" },
+                "is_primary": { "type": "boolean" }
+              },
+              "required": [
+                "url"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/web_addresses/{id}": {
-      "get": { "summary": "Get Web Address", "operationId": "getWebAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Web Address", "operationId": "updateWebAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "url": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Web Address", "operationId": "deleteWebAddress", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Web Address",
+        "operationId": "getWebAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Web Address",
+        "operationId": "updateWebAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Web Address",
+        "operationId": "deleteWebAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/constituents/{constituent_id}/notes": {
       "get": {
         "summary": "List Constituent Notes",
         "operationId": "listConstituentNotes",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Success" } }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Create Note",
         "operationId": "createNote",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "text": { "type": "string" },
-                  "note_date": { "type": "string" },
-                  "note_type": { "type": "string" },
-                  "subject": { "type": "string" }
-                },
-                "required": ["text"]
-              }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": { "type": "string" },
+                "note_date": { "type": "string" },
+                "note_type": { "type": "string" },
+                "subject": { "type": "string" }
+              },
+              "required": [
+                "text"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/notes/{id}": {
-      "get": { "summary": "Get Note Details", "operationId": "getNote", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Note Record", "operationId": "updateNote", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "text": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Note Record", "operationId": "deleteNote", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Note Details",
+        "operationId": "getNote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Note Record",
+        "operationId": "updateNote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Note Record",
+        "operationId": "deleteNote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/constituents/{constituent_id}/group_memberships": {
       "get": {
         "summary": "List Group Memberships",
         "operationId": "listGroupMemberships",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Success" } }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Add Constituent to Group",
         "operationId": "createGroupMembership",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "group_id": { "type": "integer" }
-                },
-                "required": ["group_id"]
-              }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "group_id": { "type": "integer" }
+              },
+              "required": [
+                "group_id"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/group_memberships/{id}": {
-      "get": { "summary": "Get Group Membership", "operationId": "getGroupMembership", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Group Membership", "operationId": "updateGroupMembership", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "group_id": { "type": "integer" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Remove Constituent from Group", "operationId": "deleteGroupMembership", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Group Membership",
+        "operationId": "getGroupMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Group Membership",
+        "operationId": "updateGroupMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "group_id": { "type": "integer" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove Constituent from Group",
+        "operationId": "deleteGroupMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/groups": {
-      "get": { "summary": "List Groups", "operationId": "listGroups", "responses": { "200": { "description": "Success" } } },
-      "post": { "summary": "Create Group", "operationId": "createGroup", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] } } } }, "responses": { "201": { "description": "Created" } } }
+      "get": {
+        "summary": "List Groups",
+        "operationId": "listGroups",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Group",
+        "operationId": "createGroup",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
     },
     "/groups/{id}": {
-      "get": { "summary": "Get Group", "operationId": "getGroup", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Group", "operationId": "updateGroup", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Group", "operationId": "deleteGroup", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
+      "get": {
+        "summary": "Get Group",
+        "operationId": "getGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Group",
+        "operationId": "updateGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Group",
+        "operationId": "deleteGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     },
     "/constituents/{constituent_id}/memberships": {
       "get": {
         "summary": "List Constituent Memberships",
         "operationId": "listConstituentMemberships",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Success" } }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       },
       "post": {
         "summary": "Add Membership to Constituent",
         "operationId": "createMembership",
-        "parameters": [{ "name": "constituent_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "membership_level_id": { "type": "integer" },
-                  "start_date": { "type": "string" },
-                  "end_date": { "type": "string" }
-                },
-                "required": ["membership_level_id"]
-              }
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "membership_level_id": { "type": "integer" },
+                "start_date": { "type": "string" },
+                "end_date": { "type": "string" }
+              },
+              "required": [
+                "membership_level_id"
+              ]
             }
           }
-        },
-        "responses": { "201": { "description": "Created" } }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
       }
     },
     "/memberships/{id}": {
-      "get": { "summary": "Get Membership details", "operationId": "getMembership", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } },
-      "patch": { "summary": "Update Membership record", "operationId": "updateMembership", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "membership_level_id": { "type": "integer" } } } } } }, "responses": { "200": { "description": "Success" } } },
-      "delete": { "summary": "Delete Membership record", "operationId": "deleteMembership", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }], "responses": { "200": { "description": "Success" } } }
-    }
-  },
-  "components": {
-    "securitySchemes": {
-      "BearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "Provide your Little Green Light API Key generated in Settings > Integration > API Keys"
+      "get": {
+        "summary": "Get Membership details",
+        "operationId": "getMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Membership record",
+        "operationId": "updateMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "membership_level_id": { "type": "integer" }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Membership record",
+        "operationId": "deleteMembership",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
       }
     }
   }
