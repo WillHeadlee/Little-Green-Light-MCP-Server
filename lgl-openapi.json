@@ -1,0 +1,473 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Little Green Light API",
+    "description": "Direct, secure REST API connector for the Little Green Light CRM database to manage constituents, gifts, events, and notes.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.littlegreenlight.com/api/v1",
+      "description": "Production LGL API Server"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/constituents": {
+      "get": {
+        "summary": "List Constituents",
+        "description": "Retrieve all constituents with pagination.",
+        "operationId": "listConstituents",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of records to skip",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful retrieval of constituents list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Constituent",
+        "description": "Create a new constituent record.",
+        "operationId": "createConstituent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "first_name": { "type": "string" },
+                  "last_name": { "type": "string" },
+                  "organization_name": { "type": "string" },
+                  "constituent_type": { "type": "string", "enum": ["individual", "organization"], "default": "individual" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Constituent created successfully"
+          }
+        }
+      }
+    },
+    "/constituents/search": {
+      "get": {
+        "summary": "Search Constituents",
+        "description": "Search constituents by name, email, phone, or generic search query.",
+        "operationId": "searchConstituents",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "The search term",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful retrieval of search results"
+          }
+        }
+      }
+    },
+    "/constituents/{id}": {
+      "get": {
+        "summary": "Get Constituent Details",
+        "description": "Fetch a single constituent's comprehensive record by ID.",
+        "operationId": "getConstituent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Constituent details successfully retrieved"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Constituent",
+        "description": "Modify an existing constituent's core fields.",
+        "operationId": "updateConstituent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "first_name": { "type": "string" },
+                  "last_name": { "type": "string" },
+                  "organization_name": { "type": "string" },
+                  "constituent_type": { "type": "string", "enum": ["individual", "organization"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Constituent updated successfully"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Constituent",
+        "description": "Remove a constituent record by ID.",
+        "operationId": "deleteConstituent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Constituent deleted successfully"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/gifts": {
+      "get": {
+        "summary": "List Constituent Gifts",
+        "description": "Fetch all fundraising gifts recorded for a specific constituent.",
+        "operationId": "listConstituentGifts",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gifts retrieved successfully"
+          }
+        }
+      },
+      "post": {
+        "summary": "Record Gift",
+        "description": "Log a new fundraising donation/gift for a constituent.",
+        "operationId": "createGift",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": { "type": "number", "description": "Gift value in USD" },
+                  "gift_date": { "type": "string", "description": "YYYY-MM-DD" },
+                  "gift_type_id": { "type": "integer" },
+                  "payment_type_id": { "type": "integer" },
+                  "campaign_id": { "type": "integer" },
+                  "fund_id": { "type": "integer" },
+                  "note": { "type": "string" }
+                },
+                "required": ["amount", "gift_date"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Gift recorded successfully"
+          }
+        }
+      }
+    },
+    "/gifts/search": {
+      "get": {
+        "summary": "Search Gifts",
+        "description": "Search and retrieve recorded payments across all constituents.",
+        "operationId": "searchGifts",
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "description": "Filter gifts on or after this date (YYYY-MM-DD)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "description": "Filter gifts on or before this date (YYYY-MM-DD)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gifts list successfully retrieved"
+          }
+        }
+      }
+    },
+    "/gifts/{id}": {
+      "get": {
+        "summary": "Get Gift Details",
+        "operationId": "getGift",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gift details successfully retrieved"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Gift Record",
+        "operationId": "updateGift",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amount": { "type": "number" },
+                  "gift_date": { "type": "string" },
+                  "note": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Gift updated successfully"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Gift Record",
+        "operationId": "deleteGift",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gift deleted successfully"
+          }
+        }
+      }
+    },
+    "/constituents/{constituent_id}/notes": {
+      "get": {
+        "summary": "List Constituent Notes",
+        "operationId": "listConstituentNotes",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notes retrieved successfully"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Note",
+        "description": "Log a comment, record, or activity report for a constituent.",
+        "operationId": "createNote",
+        "parameters": [
+          {
+            "name": "constituent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string", "description": "The content body of the note" },
+                  "note_date": { "type": "string", "description": "YYYY-MM-DD" },
+                  "note_type": { "type": "string", "description": "Type of note" },
+                  "subject": { "type": "string" }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Note added successfully"
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "List Events",
+        "operationId": "listEvents",
+        "responses": {
+          "200": {
+            "description": "Events retrieved successfully"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Event",
+        "operationId": "createEvent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "event_date": { "type": "string", "description": "YYYY-MM-DD" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Event created successfully"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Provide your Little Green Light API Key generated in Settings > Integration > API Keys"
+      }
+    }
+  }
+}
