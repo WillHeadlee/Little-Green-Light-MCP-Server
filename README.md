@@ -34,10 +34,13 @@ Copy the `.env.example` template to create your local `.env` configuration file:
 ```bash
 cp .env.example .env
 ```
-Open `.env` in a text editor and replace the placeholder with your actual LGL API key:
+Open `.env` in a text editor and replace the placeholder with your actual LGL API key and configuration:
 ```env
 LGL_API_KEY=your_lgl_api_key_here
 PORT=3000
+
+# Optional: Secure your Streamable HTTP endpoint with Bearer Token Authentication
+LGL_MCP_TOKEN=your_secure_bearer_token_here
 ```
 
 #### Optional: Read-Only Mode
@@ -47,6 +50,22 @@ LGL_READ_ONLY=true
 ```
 
 All tools also publish MCP `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so clients can warn before destructive calls without depending on the server-side guard.
+
+---
+
+## Transport Selection
+
+This server supports two communication transport standards:
+- **Stdio Transport (Default):** The standard input/output process channel. Ideal for local programs like Claude Desktop or local command configurations.
+- **Streamable HTTP Transport (SSE):** Runs a native HTTP server providing modern, stateful Server-Sent Events (SSE) over HTTP. Required for **GitHub Copilot**, Cursor's SSE mode, cloud containers, and systems that don't natively execute local Node.js processes.
+
+### Running in Streamable HTTP Mode
+To launch the server in Streamable HTTP mode, use the `--http` (or `--sse`) flag:
+```bash
+node index.js --http --port 3000
+```
+- **Port Selection:** Custom ports can be specified using `--port <number>` or the `PORT` environment variable (defaults to `3000`).
+- **Secure Token Protection:** If you set `LGL_MCP_TOKEN` in your `.env` file, Bearer Token Authentication is strictly enforced. All client requests must include the header `Authorization: Bearer <your_token>`, or they will be rejected with `401 Unauthorized`.
 
 ---
 
@@ -77,7 +96,9 @@ To utilize this server in the official Claude Desktop application, add the confi
 ```
 
 ### 2. Cursor IDE (AI Code Editor)
-Cursor supports custom MCP servers directly in its graphical user interface:
+Cursor supports custom MCP servers directly in its graphical user interface. You can connect using either Stdio (command) or Streamable HTTP (SSE):
+
+**Option A: Local Stdio (Command)**
 1. Open Cursor and navigate to **Settings** > **Features** > **MCP**.
 2. Click **+ Add New MCP Server**.
 3. Configure the fields in the popup:
@@ -85,6 +106,16 @@ Cursor supports custom MCP servers directly in its graphical user interface:
    - **Type:** `command`
    - **Command:** `node C:\path\to\your\workspace\folder\index.js`
 4. Click **Save**. Note: You must ensure that the `LGL_API_KEY` is set in your operating system environment variables or shell configuration so Cursor can inherit it.
+
+**Option B: Streamable HTTP (SSE Mode)**
+1. Start the LGL MCP server in HTTP mode: `node index.js --http --port 3000`
+2. Navigate to **Settings** > **Features** > **MCP**.
+3. Click **+ Add New MCP Server**.
+4. Configure the fields in the popup:
+   - **Name:** `lgl-crm-sse`
+   - **Type:** `sse`
+   - **URL:** `http://localhost:3000/mcp`
+5. Click **Save**. Note: If `LGL_MCP_TOKEN` is enabled, ensure your editor includes the Bearer authorization header or connection config.
 
 ### 3. Windsurf IDE (AI Code Editor)
 Windsurf supports native MCP configurations via its global config file.
