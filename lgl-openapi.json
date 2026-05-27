@@ -13,9 +13,9 @@
   "securityDefinitions": {
     "api_key": {
       "type": "apiKey",
-      "name": "Authorization",
-      "in": "header",
-      "description": "Enter your LGL API key prefixed with 'Bearer ' (e.g. 'Bearer 1Qbrh8...')."
+      "name": "access_token",
+      "in": "query",
+      "description": "Enter your raw Little Green Light API Key generated in Settings > Integration > API Keys."
     }
   },
   "security": [
