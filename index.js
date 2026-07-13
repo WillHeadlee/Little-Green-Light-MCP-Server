@@ -147,13 +147,24 @@ function summaryConstituent(c) {
   };
 }
 
+// LGL's field names for amount/date are inconsistent across endpoints: the
+// nested /constituents/{id}/gifts list uses amount/gift_date, while
+// /gifts/{id} and /gifts/search use received_amount/received_date. Read both.
+function giftAmount(g) {
+  return parseFloat(g.amount ?? g.received_amount ?? 0);
+}
+
+function giftDate(g) {
+  return g.gift_date ?? g.received_date ?? null;
+}
+
 function summaryGift(g) {
   return {
     id: g.id,
     constituent_id: g.constituent_id,
     constituent_name: g.constituent_name ?? null,
-    date: g.gift_date,
-    amount: g.amount,
+    date: giftDate(g),
+    amount: giftAmount(g),
     campaign: g.campaign_name ?? null,
     fund: g.fund_name ?? null,
     payment_type: g.payment_type_name ?? null,
@@ -1539,20 +1550,34 @@ async function handleTool(name, args, authInfo) {
     // ── 3. Gifts & Fundraising ───────────────────────────────────────────────
 
     case "list_gifts": {
+      // LGL's start_date/end_date query params are not honored server-side by
+      // either endpoint below (confirmed: identical results regardless of
+      // range) — still sent as a hint in case that changes, but filtering is
+      // enforced client-side so results are correct either way.
       const limit = args.limit ?? 50;
+      const filterByDate = (items) => {
+        if (!args.start_date && !args.end_date) return items;
+        return items.filter((g) => {
+          const d = giftDate(g);
+          if (!d) return false;
+          if (args.start_date && d < args.start_date) return false;
+          if (args.end_date && d > args.end_date) return false;
+          return true;
+        });
+      };
       if (args.constituent_id) {
         const params = new URLSearchParams({ limit: String(limit) });
         if (args.start_date) params.set("start_date", args.start_date);
         if (args.end_date) params.set("end_date", args.end_date);
         const data = await lglRequest("GET", `/constituents/${args.constituent_id}/gifts?${params}`);
-        return toText((data.items ?? data).map(summaryGift));
+        return toText(filterByDate(data.items ?? data).map(summaryGift));
       } else {
         const params = new URLSearchParams({ limit: String(limit) });
         if (args.query) params.set("q", args.query);
         if (args.start_date) params.set("start_date", args.start_date);
         if (args.end_date) params.set("end_date", args.end_date);
         const data = await lglRequest("GET", `/gifts/search?${params}`);
-        return toText((data.items ?? data).map(summaryGift));
+        return toText(filterByDate(data.items ?? data).map(summaryGift));
       }
     }
 
@@ -2086,26 +2111,30 @@ async function handleTool(name, args, authInfo) {
     // ── 10. Reports & Shortcuts ──────────────────────────────────────────────
 
     case "recent_donors": {
+      // start_date is still sent as a hint, but LGL doesn't honor it
+      // server-side, so the cutoff is enforced client-side below.
       const days = args.days ?? 30;
       const start_date = utcDateNDaysAgo(days);
       const { gifts, truncated } = await paginateGifts({ start_date });
 
       const byConstituent = {};
       for (const g of gifts) {
+        const d = giftDate(g);
+        if (!d || d < start_date) continue;
         const cid = g.constituent_id;
         if (!byConstituent[cid]) {
           byConstituent[cid] = {
             constituent_id: cid,
             name: g.constituent_name ?? `ID ${cid}`,
-            last_gift_date: g.gift_date,
+            last_gift_date: d,
             total_given: 0,
             gift_count: 0,
           };
         }
         const rec = byConstituent[cid];
-        rec.total_given += parseFloat(g.amount ?? 0);
+        rec.total_given += giftAmount(g);
         rec.gift_count += 1;
-        if (g.gift_date > rec.last_gift_date) rec.last_gift_date = g.gift_date;
+        if (d > rec.last_gift_date) rec.last_gift_date = d;
       }
 
       const donors = Object.values(byConstituent).sort((a, b) =>
@@ -2121,35 +2150,32 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "lapsed_donors": {
-      // A donor is "lapsed" if they have given previously but not in the last
-      // N months. The naive approach — pull the most recent N gifts and look
-      // for old dates — is wrong by construction: a donor whose last gift is
-      // older than the recent-N window will never appear in that window for
-      // an active org, so they're invisible to the report.
-      //
-      // Correct approach, two queries:
-      //   1. Active set:   gifts with gift_date >= cutoff  → constituent IDs to EXCLUDE
-      //   2. Pre-cutoff:   gifts with gift_date <  cutoff  → candidate donors
-      // Lapsed = candidates not in the active set.
+      // A donor is "lapsed" if their most recent gift is older than the
+      // cutoff. LGL's start_date/end_date query params aren't honored
+      // server-side (confirmed: identical results regardless of range), so
+      // this used to split into two server-filtered queries that both
+      // silently returned the full unfiltered dataset — active/pre-cutoff
+      // sets ended up identical and nothing was ever classified as lapsed.
+      // Fixed by pulling the full gift history once and classifying by each
+      // constituent's actual last gift date, computed client-side.
       const months = args.months_lapsed ?? 12;
       const cutoffStr = utcDateNMonthsAgo(months);
 
-      const active = await paginateGifts({ start_date: cutoffStr });
-      const activeIds = new Set(active.gifts.map((g) => g.constituent_id));
-
-      const pre = await paginateGifts({ end_date: cutoffStr });
+      const { gifts, truncated } = await paginateGifts({});
       const latest = {};
       const totals = {};
-      for (const g of pre.gifts) {
+      for (const g of gifts) {
+        const d = giftDate(g);
+        if (!d) continue;
         const cid = g.constituent_id;
-        if (!latest[cid] || g.gift_date > latest[cid].date) {
-          latest[cid] = { date: g.gift_date, name: g.constituent_name ?? `ID ${cid}` };
+        if (!latest[cid] || d > latest[cid].date) {
+          latest[cid] = { date: d, name: g.constituent_name ?? `ID ${cid}` };
         }
-        totals[cid] = (totals[cid] ?? 0) + parseFloat(g.amount ?? 0);
+        totals[cid] = (totals[cid] ?? 0) + giftAmount(g);
       }
 
       const lapsed = Object.entries(latest)
-        .filter(([cid]) => !activeIds.has(parseInt(cid)))
+        .filter(([, v]) => v.date < cutoffStr)
         .map(([cid, v]) => ({
           constituent_id: parseInt(cid),
           name: v.name,
@@ -2159,19 +2185,17 @@ async function handleTool(name, args, authInfo) {
         .sort((a, b) => a.last_gift_date.localeCompare(b.last_gift_date));
 
       const result = { cutoff: cutoffStr, months_lapsed: months, count: lapsed.length, lapsed_donors: lapsed };
-      if (active.truncated || pre.truncated) {
+      if (truncated) {
         result.truncated = true;
-        result.notice =
-          "Hit pagination ceiling — results may be incomplete. " +
-          (active.truncated
-            ? "Active-donor set was truncated, so some constituents may be wrongly flagged as lapsed. "
-            : "") +
-          (pre.truncated ? "Pre-cutoff history was truncated, so some lapsed donors may be missing." : "");
+        result.notice = "Hit pagination ceiling — results may be incomplete for high-volume accounts.";
       }
       return toText(result);
     }
 
     case "top_donors": {
+      // start_date/end_date are sent as hints but not honored server-side by
+      // LGL, so the range is enforced client-side against each gift's
+      // resolved date once fetched.
       const limit = args.limit ?? 25;
       const baseQuery = {};
       if (args.start_date) baseQuery.start_date = args.start_date;
@@ -2181,11 +2205,14 @@ async function handleTool(name, args, authInfo) {
 
       const agg = {};
       for (const g of gifts) {
+        const d = giftDate(g);
+        if (args.start_date && (!d || d < args.start_date)) continue;
+        if (args.end_date && (!d || d > args.end_date)) continue;
         const cid = g.constituent_id;
         if (!agg[cid]) {
           agg[cid] = { constituent_id: cid, name: g.constituent_name ?? `ID ${cid}`, total_given: 0, gift_count: 0 };
         }
-        agg[cid].total_given += parseFloat(g.amount ?? 0);
+        agg[cid].total_given += giftAmount(g);
         agg[cid].gift_count += 1;
       }
 
@@ -2325,7 +2352,7 @@ function assertWriteAllowed(name) {
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.2.0" },
+  { name: "lgl-mcp", version: "1.2.1" },
   { capabilities: { tools: {} } }
 );
 
