@@ -6,12 +6,12 @@
     "url": "https://github.com/WillHeadlee/Little-Green-Light-MCP-Server",
     "source": "github"
   },
-  "version": "1.2.2",
+  "version": "1.3.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "lgl-mcp-server",
-      "version": "1.2.2",
+      "version": "1.3.0",
       "transport": {
         "type": "stdio"
       },
@@ -28,6 +28,13 @@
           "description": "Set to \"true\" to refuse all create/update/delete tool calls and hide mutation tools from tools/list. Useful when pointing the server at a live donor database from an exploratory session.",
           "isRequired": false,
           "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "LGL_INTEGRATION_LISTENER_URL",
+          "description": "Listener URL for an LGL custom integration (Settings → Integrations in LGL). Enables submit_constituent_for_review, which posts to LGL's Integration Queue for human approval instead of writing directly — stays available even when LGL_READ_ONLY is set.",
+          "isRequired": false,
+          "isSecret": true,
           "format": "string"
         }
       ]

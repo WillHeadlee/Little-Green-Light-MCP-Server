@@ -1378,6 +1378,26 @@ const TOOLS = [
       required: ["method", "path"],
     },
   },
+
+  // ── 12. Integration Queue (Human-Reviewed Writes) ────────────────────────
+  {
+    name: "submit_constituent_for_review",
+    description: "Submit a new or updated constituent to LGL's Integration Queue for human review, via LGL's own custom-integration webhook listener (Settings → Integrations). This does NOT write to LGL directly — the record lands in the Integration Queue and a person must approve it before it takes effect. Safe to use even when LGL_READ_ONLY is set, since nothing is written without human approval. Only the fields listed here are mapped by the configured integration (constituent_type, first_name, last_name, email, phone, company, job_title, record_id) — anything else would need a new field mapping added in LGL's integration settings first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        constituent_type: { type: "string", description: "e.g. 'Individual' or 'Organization'" },
+        first_name: { type: "string" },
+        last_name: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        company: { type: "string" },
+        job_title: { type: "string" },
+        record_id: { type: "string", description: "LGL constituent ID — set this to update/match an existing constituent instead of creating a new one" },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 // ─── Handler Dispatcher ──────────────────────────────────────────────────────
@@ -2323,6 +2343,48 @@ async function handleTool(name, args, authInfo) {
       return toText(await lglRequest(method, path, body));
     }
 
+    // ── 12. Integration Queue (Human-Reviewed Writes) ────────────────────────
+
+    case "submit_constituent_for_review": {
+      const listenerUrl = process.env.LGL_INTEGRATION_LISTENER_URL;
+      if (!listenerUrl) {
+        throw new Error(
+          "LGL_INTEGRATION_LISTENER_URL is not set. Set it to the listener URL from LGL Settings → Integrations for this custom integration."
+        );
+      }
+
+      const MAPPED_FIELDS = [
+        "constituent_type", "first_name", "last_name", "email",
+        "phone", "company", "job_title", "record_id",
+      ];
+      const payload = new URLSearchParams();
+      for (const key of MAPPED_FIELDS) {
+        if (args[key] !== undefined && args[key] !== null && args[key] !== "") {
+          payload.set(key, String(args[key]));
+        }
+      }
+      if ([...payload.keys()].length === 0) {
+        throw new Error("Provide at least one mapped field (e.g. first_name, last_name, email) to submit.");
+      }
+
+      const res = await fetch(listenerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: payload.toString(),
+      });
+      const responseText = await res.text();
+      if (!res.ok) {
+        throw new Error(`LGL Integration listener returned ${res.status}: ${responseText}`);
+      }
+
+      return toText({
+        status: "submitted_for_review",
+        note: "Sent to LGL's Integration Queue. This has NOT been written to the constituent database — a human must approve it in LGL (Settings → Integrations → Integration Queue) first.",
+        fields_sent: Object.fromEntries(payload),
+        listener_response: responseText,
+      });
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -2341,6 +2403,13 @@ async function handleTool(name, args, authInfo) {
 function classifyTool(name) {
   if (name === "call_lgl_api") {
     return { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+  }
+  if (name === "submit_constituent_for_review") {
+    // Deliberately exempt from LGL_READ_ONLY: this never writes to LGL
+    // directly. It only POSTs to LGL's own Integration Queue listener, where
+    // a human must approve the record before it's applied — so it's safe to
+    // leave available even in read-only deployments.
+    return { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
   }
   if (name.startsWith("delete_") || name.startsWith("remove_")) {
     return { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
@@ -2372,7 +2441,7 @@ function assertWriteAllowed(name) {
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.2.2" },
+  { name: "lgl-mcp", version: "1.3.0" },
   { capabilities: { tools: {} } }
 );
 
