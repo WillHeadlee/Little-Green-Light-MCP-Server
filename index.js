@@ -1570,7 +1570,27 @@ async function handleTool(name, args, authInfo) {
         if (args.start_date) params.set("start_date", args.start_date);
         if (args.end_date) params.set("end_date", args.end_date);
         const data = await lglRequest("GET", `/constituents/${args.constituent_id}/gifts?${params}`);
-        return toText(filterByDate(data.items ?? data).map(summaryGift));
+        let items = data.items ?? data;
+
+        // The nested gifts list is an abbreviated representation that omits
+        // gift_date/received_date entirely (unlike GET /gifts/{id}), so date
+        // is always missing here otherwise. Backfill per-record; capped so a
+        // donor with a very large gift history doesn't fan out unbounded.
+        if (items.length <= 50 && items.some((g) => giftDate(g) === null)) {
+          items = await Promise.all(
+            items.map(async (g) => {
+              if (giftDate(g) !== null) return g;
+              try {
+                const full = await lglRequest("GET", `/gifts/${g.id}`);
+                return { ...g, received_date: full.received_date };
+              } catch {
+                return g;
+              }
+            })
+          );
+        }
+
+        return toText(filterByDate(items).map(summaryGift));
       } else {
         const params = new URLSearchParams({ limit: String(limit) });
         if (args.query) params.set("q", args.query);
@@ -2352,7 +2372,7 @@ function assertWriteAllowed(name) {
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.2.1" },
+  { name: "lgl-mcp", version: "1.2.2" },
   { capabilities: { tools: {} } }
 );
 
