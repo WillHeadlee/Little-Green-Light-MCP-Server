@@ -6,12 +6,12 @@
     "url": "https://github.com/WillHeadlee/Little-Green-Light-MCP-Server",
     "source": "github"
   },
-  "version": "1.6.0",
+  "version": "1.7.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "lgl-mcp-server",
-      "version": "1.6.0",
+      "version": "1.7.0",
       "transport": {
         "type": "stdio"
       },
@@ -25,14 +25,21 @@
         },
         {
           "name": "LGL_READ_ONLY",
-          "description": "Set to \"true\" to refuse all create/update/delete tool calls and hide mutation tools from tools/list. Useful when pointing the server at a live donor database from an exploratory session.",
+          "description": "Set to \"true\" to refuse all mutating tool calls and hide them from tools/list — including notes and Integration Queue submissions. Strictly read-only: zero writes of any kind. Useful when pointing the server at a live donor database from an exploratory session. Combine with LGL_ASSISTED_MODE=true to selectively re-enable low-risk, human-reviewed writes.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "LGL_ASSISTED_MODE",
+          "description": "Only meaningful when LGL_READ_ONLY=true is also set. Set to \"true\" to re-enable a middle permission tier: the automatic access-audit notes, explicit create_note/update_note, and the submit_*_for_review Integration Queue tools (which only post to LGL's human-reviewed queue, never write a record directly). Direct mutations to constituents/gifts/groups/etc. remain blocked.",
           "isRequired": false,
           "isSecret": false,
           "format": "string"
         },
         {
           "name": "LGL_INTEGRATION_LISTENER_URL",
-          "description": "Listener URL for an LGL custom integration (Settings → Integrations in LGL). Enables submit_constituent_for_review, which posts to LGL's Integration Queue for human approval instead of writing directly — stays available even when LGL_READ_ONLY is set.",
+          "description": "Listener URL for an LGL custom integration (Settings → Integrations in LGL). Enables the submit_*_for_review tools, which post to LGL's Integration Queue for human approval instead of writing directly. These tools require either full mode or LGL_ASSISTED_MODE=true when LGL_READ_ONLY is set.",
           "isRequired": false,
           "isSecret": true,
           "format": "string"

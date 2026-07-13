@@ -132,14 +132,17 @@ async function resolveDefaultNoteTypeId() {
 // ─── Access Audit Logging ────────────────────────────────────────────────────
 // Writes a note directly to the LGL API (not the Integration Queue — this
 // needs to fire unattended, not wait on human approval) whenever a tool opens
-// a single constituent's file. Deliberately bypasses LGL_READ_ONLY: the audit
-// trail should keep working precisely when a session is in cautious/read-only
-// mode, not go silent. Scoped to single-record detail views only
-// (get_constituent, get_donor_context) — bulk list_*/search_* calls do not
-// log, since noting every row of a 50-record list would flood constituents'
-// note history. Best-effort: a logging failure never fails the read that
-// triggered it.
+// a single constituent's file. This is itself a write, so it's gated the same
+// way as any other assisted-tier write: it fires in full mode and in assisted
+// mode (LGL_READ_ONLY=true + LGL_ASSISTED_MODE=true), and is silently skipped
+// under strict read-only, where the whole point is to leave zero footprint.
+// Scoped to single-record detail views only (get_constituent,
+// get_donor_context, export_constituent_profile) — bulk list_*/search_* calls
+// do not log, since noting every row of a 50-record list would flood
+// constituents' note history. Best-effort: a logging failure never fails the
+// read that triggered it.
 async function logAccessNote(constituentId, toolName) {
+  if (READ_ONLY_MODE && !ASSISTED_MODE) return;
   try {
     const now = new Date();
     const noteDate = now.toISOString().slice(0, 10);
@@ -164,10 +167,13 @@ async function logAccessNote(constituentId, toolName) {
 // ─── LGL Integration Queue (human-reviewed writes) ──────────────────────────
 // Posts flat key/value pairs to LGL's own custom-integration webhook listener
 // (LGL Settings → Integrations). Submissions land in the Integration Queue for
-// a human to approve — never written to LGL directly — so these are exempt
-// from LGL_READ_ONLY. Field mapping (which key -> which LGL field) is
-// configured in LGL's UI, not here; sending an unmapped key is silently
-// ignored by LGL rather than erroring.
+// a human to approve — never written to LGL directly. That makes them safe
+// enough to allow in assisted mode (LGL_READ_ONLY=true + LGL_ASSISTED_MODE=
+// true) without unlocking direct mutations, but they're still real writes to
+// a shared queue, so strict read-only (no LGL_ASSISTED_MODE) blocks them too.
+// Field mapping (which key -> which LGL field) is configured in LGL's UI, not
+// here; sending an unmapped key is silently ignored by LGL rather than
+// erroring.
 
 async function postToIntegrationQueue(fields) {
   const listenerUrl = process.env.LGL_INTEGRATION_LISTENER_URL;
@@ -370,7 +376,7 @@ const TOOLS = [
   },
   {
     name: "get_constituent",
-    description: "Get full details for a single constituent by ID. Writes an 'AI Access Log' note directly to that constituent's record noting when and by which tool it was accessed — this happens automatically and cannot be suppressed, including under LGL_READ_ONLY.",
+    description: "Get full details for a single constituent by ID. Writes an 'AI Access Log' note directly to that constituent's record noting when and by which tool it was accessed — this happens automatically in full and assisted (LGL_ASSISTED_MODE=true) modes, and is silently skipped under strict LGL_READ_ONLY.",
     inputSchema: {
       type: "object",
       properties: {
@@ -919,6 +925,20 @@ const TOOLS = [
     description: "Delete a note record by Note ID",
     inputSchema: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
   },
+  {
+    name: "log_document_link",
+    description: "NOT a real file attachment — LGL's API has no upload endpoint at all (even LGL's own web forms only accept a hosted URL, never raw file bytes). This logs a note on the constituent's record containing a link to a file hosted elsewhere (e.g. OneDrive, SharePoint, Google Drive) plus a short description, so the document is at least referenced and findable via list_notes/search_constituents. The linked file itself is not verified, downloaded, or stored by this server.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        constituent_id: { type: "number" },
+        url: { type: "string", description: "Link to the file hosted elsewhere (OneDrive/SharePoint/Drive/etc.)" },
+        description: { type: "string", description: "What the document is, e.g. \"Signed pledge agreement\"" },
+        note_date: { type: "string", description: "YYYY-MM-DD, defaults to today" },
+      },
+      required: ["constituent_id", "url", "description"],
+    },
+  },
 
   // * Contact Reports:
   {
@@ -1204,6 +1224,22 @@ const TOOLS = [
       type: "object",
       properties: { id: { type: "number", description: "Group Membership ID" } },
       required: ["id"],
+    },
+  },
+  {
+    name: "create_group_with_members",
+    description: "Creates a new LGL group and adds one or more constituents to it in a single call. This is the closest API-native substitute for LGL's UI-only saved/dynamic Lists — LGL's API has no endpoint to create or edit a List at all. Unlike a List, a group is a static set of members (not a live, re-run query); add or remove members afterward with add_constituent_to_group / remove_constituent_from_group. Partial failures (e.g. one bad constituent_id) don't fail the whole call — check each entry's result.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        group_name: { type: "string", description: "Name for the new group, e.g. \"Major Donors Q3 2026\"" },
+        constituent_ids: {
+          type: "array",
+          items: { type: "number" },
+          description: "Constituent IDs to add as members of the new group",
+        },
+      },
+      required: ["group_name", "constituent_ids"],
     },
   },
 
@@ -1521,7 +1557,7 @@ const TOOLS = [
   },
   {
     name: "get_donor_context",
-    description: "One-shot lookup that returns a constituent's profile plus their recent giving history, group memberships, and recent notes. Saves 4-5 round trips compared to calling get_constituent + list_gifts + list_group_memberships + list_notes separately for the common 'tell me about <donor>' workflow. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple constituents match). Writes an 'AI Access Log' note directly to that constituent's record noting when and by which tool it was accessed — this happens automatically and cannot be suppressed, including under LGL_READ_ONLY.",
+    description: "One-shot lookup that returns a constituent's profile plus their recent giving history, group memberships, and recent notes. Saves 4-5 round trips compared to calling get_constituent + list_gifts + list_group_memberships + list_notes separately for the common 'tell me about <donor>' workflow. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple constituents match). Writes an 'AI Access Log' note directly to that constituent's record noting when and by which tool it was accessed — this happens automatically in full and assisted (LGL_ASSISTED_MODE=true) modes, and is silently skipped under strict LGL_READ_ONLY.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1534,7 +1570,7 @@ const TOOLS = [
   },
   {
     name: "export_constituent_profile",
-    description: "Comprehensive one-shot export of everything LGL has on a constituent, mirroring LGL's own 'Export Profile' button: full record (contact info embedded), full gift history, relationships, class/school affiliations, memberships, volunteer time, contact reports, appeal requests, event invitations, group memberships, and notes — fetched in parallel in a single call. Slower and heavier than get_donor_context; prefer that for a quick 'tell me about <donor>' lookup and use this when you actually need everything. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple match). Writes an 'AI Access Log' note directly to the constituent's record — this happens automatically and cannot be suppressed, including under LGL_READ_ONLY.",
+    description: "Comprehensive one-shot export of everything LGL has on a constituent, mirroring LGL's own 'Export Profile' button: full record (contact info embedded), full gift history, relationships, class/school affiliations, memberships, volunteer time, contact reports, appeal requests, event invitations, group memberships, and notes — fetched in parallel in a single call. Slower and heavier than get_donor_context; prefer that for a quick 'tell me about <donor>' lookup and use this when you actually need everything. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple match). Writes an 'AI Access Log' note directly to the constituent's record — this happens automatically in full and assisted (LGL_ASSISTED_MODE=true) modes, and is silently skipped under strict LGL_READ_ONLY.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2134,6 +2170,16 @@ async function handleTool(name, args, authInfo) {
       await lglRequest("DELETE", `/notes/${args.id}`);
       return toText({ success: true, message: `Note ${args.id} deleted.` });
     }
+    case "log_document_link": {
+      const noteDate = args.note_date ?? new Date().toISOString().slice(0, 10);
+      const noteTypeId = await resolveDefaultNoteTypeId();
+      const body = {
+        text: `[Document] ${args.description}\nLink: ${args.url}`,
+        note_date: noteDate,
+      };
+      if (noteTypeId !== null) body.note_type_id = noteTypeId;
+      return toText(await lglRequest("POST", `/constituents/${args.constituent_id}/notes`, body));
+    }
 
     // * Contact Reports:
     case "list_contact_reports": {
@@ -2309,6 +2355,20 @@ async function handleTool(name, args, authInfo) {
     case "remove_constituent_from_group": {
       await lglRequest("DELETE", `/group_memberships/${args.id}`);
       return toText({ success: true, message: `Group membership ${args.id} removed.` });
+    }
+    case "create_group_with_members": {
+      const group = await lglRequest("POST", "/groups", { name: args.group_name });
+      const results = await Promise.all(
+        (args.constituent_ids ?? []).map(async (constituentId) => {
+          try {
+            await lglRequest("POST", `/constituents/${constituentId}/group_memberships`, { group_id: group.id });
+            return { constituent_id: constituentId, success: true };
+          } catch (err) {
+            return { constituent_id: constituentId, success: false, error: err.message };
+          }
+        })
+      );
+      return toText({ group: { id: group.id, name: group.name }, members: results });
     }
 
     // * Memberships & Levels:
@@ -2756,30 +2816,44 @@ async function handleTool(name, args, authInfo) {
   }
 }
 
-// ─── Tool Annotations & Read-Only Mode ──────────────────────────────────────
+// ─── Tool Annotations & Permission Levels ───────────────────────────────────
 // Classify every tool so MCP clients (and this server's own write-guard) can
 // reason about which calls modify data. Annotations follow the 2025-06-18 MCP
-// spec: readOnlyHint, destructiveHint, idempotentHint, openWorldHint.
+// spec (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), plus a
+// server-specific `assistedWriteHint` for a third tier between the two.
 //
-// Set LGL_READ_ONLY=true in the environment to refuse all mutations. Useful
-// when pointing the server at a live donor database from an exploratory chat
-// session. Read-only mode also hides mutation tools from tools/list so the
-// model doesn't try to call them.
+// Three permission levels, controlled by two env vars:
+//   - Strictly read-only (LGL_READ_ONLY=true, LGL_ASSISTED_MODE unset/false):
+//     zero writes of any kind — no direct mutations, no notes (including the
+//     automatic access-audit note), no Integration Queue submissions.
+//   - Assisted (LGL_READ_ONLY=true + LGL_ASSISTED_MODE=true): everything
+//     read-only allows, plus low-risk, easily-reviewed writes: the automatic
+//     access-audit notes, explicit create_note/update_note, and the
+//     submit_*_for_review Integration Queue tools (which only ever land in
+//     LGL's human-reviewed queue, never write a constituent record directly).
+//     Direct mutations to constituents/gifts/groups/etc. stay blocked.
+//   - Full (LGL_READ_ONLY unset/false): unrestricted, as before.
+// Read-only and assisted modes both hide disallowed tools from tools/list so
+// the model doesn't try to call them.
+
+const INTEGRATION_QUEUE_TOOLS = [
+  "submit_constituent_for_review", "submit_gift_for_review", "submit_note_for_review",
+  "submit_event_registration_for_review", "submit_appeal_request_for_review",
+];
+const ASSISTED_TOOLS = [...INTEGRATION_QUEUE_TOOLS, "create_note", "update_note", "log_document_link"];
 
 function classifyTool(name) {
   if (name === "call_lgl_api") {
     return { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
   }
-  const INTEGRATION_QUEUE_TOOLS = [
-    "submit_constituent_for_review", "submit_gift_for_review", "submit_note_for_review",
-    "submit_event_registration_for_review", "submit_appeal_request_for_review",
-  ];
-  if (INTEGRATION_QUEUE_TOOLS.includes(name)) {
-    // Deliberately exempt from LGL_READ_ONLY: none of these write to LGL
-    // directly. They only POST to LGL's own Integration Queue listener, where
-    // a human must approve the record before it's applied — so they're safe
-    // to leave available even in read-only deployments.
-    return { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+  if (ASSISTED_TOOLS.includes(name)) {
+    return {
+      readOnlyHint: false,
+      assistedWriteHint: true,
+      destructiveHint: false,
+      idempotentHint: name.startsWith("update_"),
+      openWorldHint: true,
+    };
   }
   if (name.startsWith("delete_") || name.startsWith("remove_")) {
     return { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
@@ -2798,25 +2872,36 @@ for (const tool of TOOLS) {
 }
 
 const READ_ONLY_MODE = process.env.LGL_READ_ONLY === "true";
+const ASSISTED_MODE = process.env.LGL_ASSISTED_MODE === "true";
+
+function isToolAllowed(annotations) {
+  if (!READ_ONLY_MODE) return true;
+  if (annotations?.readOnlyHint) return true;
+  if (ASSISTED_MODE && annotations?.assistedWriteHint) return true;
+  return false;
+}
 
 function assertWriteAllowed(name) {
-  if (!READ_ONLY_MODE) return;
-  if (TOOLS.find((t) => t.name === name)?.annotations?.readOnlyHint) return;
+  const tool = TOOLS.find((t) => t.name === name);
+  if (isToolAllowed(tool?.annotations)) return;
+  const assistedHint = tool?.annotations?.assistedWriteHint
+    ? `This tool only needs LGL_ASSISTED_MODE=true (human-reviewed notes/webhook writes) — it doesn't require disabling LGL_READ_ONLY entirely. `
+    : "";
   throw new Error(
-    `LGL_READ_ONLY=true is set: tool "${name}" is disabled because it can modify data. ` +
-    `Unset LGL_READ_ONLY (or set it to false) to allow writes.`
+    `LGL_READ_ONLY=true is set: tool "${name}" is disabled because it can modify data. ${assistedHint}` +
+    `Unset LGL_READ_ONLY (or set it to false) to allow all writes.`
   );
 }
 
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.6.0" },
+  { name: "lgl-mcp", version: "1.7.0" },
   { capabilities: { tools: {} } }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  const tools = READ_ONLY_MODE ? TOOLS.filter((t) => t.annotations?.readOnlyHint) : TOOLS;
+  const tools = READ_ONLY_MODE ? TOOLS.filter((t) => isToolAllowed(t.annotations)) : TOOLS;
   return { tools };
 });
 

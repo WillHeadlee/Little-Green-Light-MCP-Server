@@ -9,13 +9,15 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 - **Constituents & Core Management:** Search, retrieve, create, update, and delete constituent records.
 - **Fundraising & Gifts:** Record new gifts, list transactions (with date-range filters), search payments, and view campaigns, funds, appeals, and events.
 - **Contact Sub-Resources:** Fully manage street addresses, phone numbers, email addresses, and web addresses for constituents.
-- **Activities & Notes:** Log notes, write contact reports, track volunteer hours, and schedule reminders.
+- **Activities & Notes:** Log notes, write contact reports, and track volunteer hours.
 - **Groups & Memberships:** Organize constituents into customizable groups and membership levels.
 - **One-Shot Donor Lookup:** `get_donor_context` returns profile + recent gifts + group memberships + recent notes in a single call (resolves by name or ID).
 - **Full Profile Export:** `export_constituent_profile` mirrors LGL's own "Export Profile" button — full record, complete gift history, relationships, class/school affiliations, memberships, volunteer time, contact reports, appeal requests, event invitations, group memberships, and notes, fetched in parallel in one call.
-- **Read-Only Safety:** `LGL_READ_ONLY=true` refuses every mutation and hides write tools from `tools/list`. All tools publish MCP destructive/idempotent annotations.
-- **Access Audit Trail:** `get_constituent`, `get_donor_context`, and `export_constituent_profile` automatically write an `[AI Access Log]` note directly to the constituent's record noting when it was viewed — this cannot be disabled and works even under `LGL_READ_ONLY`, since the point is to know what was looked at, especially during cautious/exploratory sessions. See [Access Audit Logging](#access-audit-logging) below.
-- **Human-Reviewed Writes:** Five `submit_*_for_review` tools post to LGL's own Integration Queue webhook instead of the API, so a person approves every write in LGL before it takes effect — stays available even in read-only mode. See [Human-Reviewed Writes](#human-reviewed-writes-integration-queue) below.
+- **Document Links:** `log_document_link` records a note pointing at a file hosted elsewhere (OneDrive/SharePoint/etc.) — LGL's API has no file-upload endpoint, so this is a reference, not a real attachment. See [API Gaps & Workarounds](#api-gaps--workarounds) below.
+- **Groups as Saved Lists:** `create_group_with_members` creates a group and adds constituents to it in one call — the closest API-native substitute for LGL's UI-only dynamic Lists, which have no create/edit endpoint. See [API Gaps & Workarounds](#api-gaps--workarounds) below.
+- **Three Permission Levels:** strictly read-only, assisted (read-only plus notes and human-reviewed webhook writes), and full. See [Permission Levels](#permission-levels) below.
+- **Access Audit Trail:** `get_constituent`, `get_donor_context`, and `export_constituent_profile` automatically write an `[AI Access Log]` note directly to the constituent's record noting when it was viewed, in full and assisted modes. See [Access Audit Logging](#access-audit-logging) below.
+- **Human-Reviewed Writes:** Five `submit_*_for_review` tools post to LGL's own Integration Queue webhook instead of the API, so a person approves every write in LGL before it takes effect. Available in full mode and assisted mode. See [Human-Reviewed Writes](#human-reviewed-writes-integration-queue) below.
 - **Zero-Middleware Architecture:** Data transits directly between the local AI client and the LGL API, reducing security risks and third-party fees.
 
 ---
@@ -49,11 +51,25 @@ LGL_MCP_TOKEN=your_secure_bearer_token_here
 LGL_INTEGRATION_LISTENER_URL=https://your-account.littlegreenlight.com/integrations/your-integration-id/listener
 ```
 
-#### Optional: Read-Only Mode
-Set `LGL_READ_ONLY=true` to refuse every `create_*`, `update_*`, `delete_*`, `record_*`, and `add_*` tool call. Mutation tools are also hidden from `tools/list` so the AI assistant doesn't try to call them. Recommended whenever you point the server at a live donor database from an exploratory chat session.
+#### Permission Levels
+Two env vars combine to give three permission levels:
+
+| Level | `LGL_READ_ONLY` | `LGL_ASSISTED_MODE` | What's allowed |
+|---|---|---|---|
+| **Strictly read-only** | `true` | unset/`false` | Reads only. Zero writes of any kind — no direct mutations, no notes (including the automatic access-audit note), no Integration Queue submissions. |
+| **Assisted** | `true` | `true` | Everything read-only allows, plus low-risk, easily-reviewed writes: the automatic access-audit notes, explicit `create_note`/`update_note`/`log_document_link`, and the `submit_*_for_review` Integration Queue tools. Direct mutations to constituents/gifts/groups/etc. (including `create_group_with_members`) stay blocked. |
+| **Full** | unset/`false` | *(ignored)* | Unrestricted — every tool, including direct `create_*`/`update_*`/`delete_*` mutations. |
+
 ```env
+# Strictly read-only
 LGL_READ_ONLY=true
+
+# Assisted: read-only plus notes and human-reviewed webhook writes
+LGL_READ_ONLY=true
+LGL_ASSISTED_MODE=true
 ```
+
+In both read-only and assisted mode, disallowed tools are hidden from `tools/list` (not just rejected on call) so the AI assistant doesn't try to use them. `LGL_ASSISTED_MODE` has no effect unless `LGL_READ_ONLY=true` is also set — in full mode everything it unlocks is already available. Recommended whenever you point the server at a live donor database: use strictly read-only for pure exploratory sessions, assisted when you also want the access-audit trail and human-reviewed writes to work.
 
 All tools also publish MCP `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so clients can warn before destructive calls without depending on the server-side guard.
 
@@ -61,7 +77,7 @@ All tools also publish MCP `annotations` (`readOnlyHint`, `destructiveHint`, `id
 
 ## Access Audit Logging
 
-Whenever `get_constituent`, `get_donor_context`, or `export_constituent_profile` is called, the server writes a note directly to that constituent's record in LGL — e.g. `[AI Access Log] Record accessed via LGL MCP Server (get_constituent) on 2026-07-13 17:24 UTC.` This is unconditional: it isn't a config option, and it fires even when `LGL_READ_ONLY=true`, since an audit trail of what was viewed is most useful precisely during a cautious, read-only session, not something that should go quiet then.
+Whenever `get_constituent`, `get_donor_context`, or `export_constituent_profile` is called in full or assisted mode, the server writes a note directly to that constituent's record in LGL — e.g. `[AI Access Log] Record accessed via LGL MCP Server (get_constituent) on 2026-07-13 17:24 UTC.` It's not a config option of its own — it rides along with whichever [permission level](#permission-levels) is active, and is silently skipped under strictly read-only, where the whole point is to leave zero footprint.
 
 A few things worth knowing:
 - **Scope is single-record detail views only.** Bulk `list_*`/`search_*` calls do *not* log — noting every row of a 50-record list would flood constituents' note history with little audit value. Only tools that open one specific donor's file do.
@@ -83,7 +99,7 @@ Separate from the direct LGL API, LGL also has a **custom integration webhook** 
 | `submit_event_registration_for_review` | Event registrations/invitations |
 | `submit_appeal_request_for_review` | Appeal requests |
 
-None of these five write to LGL directly — every submission lands in **Settings → Integration Queue → Unsaved** in LGL, where someone reviews and either saves or rejects it. Because of that, they're **exempt from `LGL_READ_ONLY`**: they stay available even when every other mutation tool is hidden, since they can't change data without a human clicking Save in LGL first.
+None of these five write to LGL directly — every submission lands in **Settings → Integration Queue → Unsaved** in LGL, where someone reviews and either saves or rejects it. Because of that, they only need [**assisted mode**](#permission-levels) rather than full write access: `LGL_READ_ONLY=true` with `LGL_ASSISTED_MODE=true` is enough to use them, since they can't change data without a human clicking Save in LGL first. Strictly read-only mode (no `LGL_ASSISTED_MODE`) still blocks them, since they are real writes to a shared queue.
 
 **Setup:**
 1. In LGL, go to *Settings → Integrations* and create (or reuse) a Custom Integration. Copy its listener URL.
@@ -92,6 +108,18 @@ None of these five write to LGL directly — every submission lands in **Setting
 4. Because there's no LGL account whose mapping is identical out of the box, treat the field names above as a starting point and confirm against your own mapping screen before relying on a given tool.
 
 **Known limitation:** mapping a field to *"LGL constituent ID"* to match/update an existing constituent by ID does not currently persist, at least when the integration's record-matching preference is set to email/name-based matching rather than ID-based. Matching therefore relies on `first_name` + `last_name` + `email` instead — omit any ID field from your mapping.
+
+---
+
+## API Gaps & Workarounds
+
+Some things LGL's own web UI supports have **no equivalent anywhere in LGL's API** — not the REST API, and not the Integration Queue webhook (which only accepts constituent/gift/note/event-registration/appeal-request fields). Confirmed absent as of this writing:
+
+| UI Feature | API endpoint? | Webhook field mapping? | This server's approach |
+|---|---|---|---|
+| Tasks / to-dos / reminders assigned to team members | No | No | None. There's no way to reach LGL's Tasks feature (including its reminder emails) programmatically — an actual feature request to LGL Support is the only path forward. |
+| File/document attachments on a constituent record | No | No | `log_document_link` logs a note containing a link to a file hosted elsewhere (OneDrive, SharePoint, Google Drive, etc.) plus a description. This is a reference, not a real attachment — LGL cannot accept an uploaded file via API at all; even its own web forms only accept a hosted URL, never raw file bytes. |
+| Saved Lists (dynamic, re-runnable queries) | No (read-only at best) | No | `create_group_with_members` creates an LGL **group** (a static set of constituents) and adds members to it in one call. Groups are fully API-writable and serve a similar purpose — "a set of people to come back to" — but are static membership, not a live query. Add/remove members afterward with `add_constituent_to_group` / `remove_constituent_from_group`. |
 
 ---
 
