@@ -13,6 +13,7 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 - **Groups & Memberships:** Organize constituents into customizable groups and membership levels.
 - **One-Shot Donor Lookup:** `get_donor_context` returns profile + recent gifts + group memberships + recent notes in a single call (resolves by name or ID).
 - **Read-Only Safety:** `LGL_READ_ONLY=true` refuses every mutation and hides write tools from `tools/list`. All tools publish MCP destructive/idempotent annotations.
+- **Human-Reviewed Writes:** Five `submit_*_for_review` tools post to LGL's own Integration Queue webhook instead of the API, so a person approves every write in LGL before it takes effect — stays available even in read-only mode. See [Human-Reviewed Writes](#human-reviewed-writes-integration-queue) below.
 - **Zero-Middleware Architecture:** Data transits directly between the local AI client and the LGL API, reducing security risks and third-party fees.
 
 ---
@@ -41,6 +42,9 @@ PORT=3000
 
 # Optional: Secure your Streamable HTTP endpoint with Bearer Token Authentication
 LGL_MCP_TOKEN=your_secure_bearer_token_here
+
+# Optional: enables the submit_*_for_review tools — see "Human-Reviewed Writes" below
+LGL_INTEGRATION_LISTENER_URL=https://your-account.littlegreenlight.com/integrations/your-integration-id/listener
 ```
 
 #### Optional: Read-Only Mode
@@ -50,6 +54,30 @@ LGL_READ_ONLY=true
 ```
 
 All tools also publish MCP `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so clients can warn before destructive calls without depending on the server-side guard.
+
+---
+
+## Human-Reviewed Writes (Integration Queue)
+
+Separate from the direct LGL API, LGL also has a **custom integration webhook** feature (LGL Settings → Integrations → Custom Integrations) that accepts flat key/value submissions and drops them into an **Integration Queue** for a human to approve before anything is actually written to a constituent's record. This server exposes that path as five tools, distinct from the `create_*`/`update_*` API tools:
+
+| Tool | Covers |
+|---|---|
+| `submit_constituent_for_review` | Identity/name fields, up to 3 phone numbers, up to 3 emails, up to 2 mailing addresses, a website, constituent category fields, and a relationship |
+| `submit_gift_for_review` | Gift, pledge, and goal fields, plus tribute (honor/memorial) details |
+| `submit_note_for_review` | Notes |
+| `submit_event_registration_for_review` | Event registrations/invitations |
+| `submit_appeal_request_for_review` | Appeal requests |
+
+None of these five write to LGL directly — every submission lands in **Settings → Integration Queue → Unsaved** in LGL, where someone reviews and either saves or rejects it. Because of that, they're **exempt from `LGL_READ_ONLY`**: they stay available even when every other mutation tool is hidden, since they can't change data without a human clicking Save in LGL first.
+
+**Setup:**
+1. In LGL, go to *Settings → Integrations* and create (or reuse) a Custom Integration. Copy its listener URL.
+2. Set `LGL_INTEGRATION_LISTENER_URL` to that URL in your environment.
+3. In that integration's *field mapping* screen, map the field names your submissions will use (e.g. `first_name`, `phone`, `email_2`, `gift_amount`, `note_text`) to the corresponding LGL fields. **The mapping lives entirely in LGL's UI, not in this server** — a field that isn't mapped is silently ignored by LGL rather than causing an error, so an unmapped submission may look successful (HTTP 200) while carrying no usable data. Repeating fields (phone/email/address) use LGL's "Record Type / #" grouping: slot 1 is the bare field name (`phone`, `email`), slots 2–3 use a numeric suffix (`phone_2`, `email_3`).
+4. Because there's no LGL account whose mapping is identical out of the box, treat the field names above as a starting point and confirm against your own mapping screen before relying on a given tool.
+
+**Known limitation:** mapping a field to *"LGL constituent ID"* to match/update an existing constituent by ID does not currently persist, at least when the integration's record-matching preference is set to email/name-based matching rather than ID-based. Matching therefore relies on `first_name` + `last_name` + `email` instead — omit any ID field from your mapping.
 
 ---
 
