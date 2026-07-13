@@ -13,6 +13,7 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 - **Groups & Memberships:** Organize constituents into customizable groups and membership levels.
 - **One-Shot Donor Lookup:** `get_donor_context` returns profile + recent gifts + group memberships + recent notes in a single call (resolves by name or ID).
 - **Read-Only Safety:** `LGL_READ_ONLY=true` refuses every mutation and hides write tools from `tools/list`. All tools publish MCP destructive/idempotent annotations.
+- **Access Audit Trail:** `get_constituent` and `get_donor_context` automatically write an `[AI Access Log]` note directly to the constituent's record noting when it was viewed — this cannot be disabled and works even under `LGL_READ_ONLY`, since the point is to know what was looked at, especially during cautious/exploratory sessions. See [Access Audit Logging](#access-audit-logging) below.
 - **Human-Reviewed Writes:** Five `submit_*_for_review` tools post to LGL's own Integration Queue webhook instead of the API, so a person approves every write in LGL before it takes effect — stays available even in read-only mode. See [Human-Reviewed Writes](#human-reviewed-writes-integration-queue) below.
 - **Zero-Middleware Architecture:** Data transits directly between the local AI client and the LGL API, reducing security risks and third-party fees.
 
@@ -54,6 +55,18 @@ LGL_READ_ONLY=true
 ```
 
 All tools also publish MCP `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so clients can warn before destructive calls without depending on the server-side guard.
+
+---
+
+## Access Audit Logging
+
+Whenever `get_constituent` or `get_donor_context` is called, the server writes a note directly to that constituent's record in LGL — e.g. `[AI Access Log] Record accessed via LGL MCP Server (get_constituent) on 2026-07-13 17:24 UTC.` This is unconditional: it isn't a config option, and it fires even when `LGL_READ_ONLY=true`, since an audit trail of what was viewed is most useful precisely during a cautious, read-only session, not something that should go quiet then.
+
+A few things worth knowing:
+- **Scope is single-record detail views only.** Bulk `list_*`/`search_*` calls do *not* log — noting every row of a 50-record list would flood constituents' note history with little audit value. Only tools that open one specific donor's file do.
+- **The note writes directly via the API**, not through the Integration Queue — an audit trail that needed human approval to appear defeats the purpose.
+- **Best-effort:** if writing the note fails for any reason, the read that triggered it still succeeds; the failure is logged to stderr, not surfaced as a tool error.
+- **Note type:** LGL's write API needs an existing `note_type_id` (a number), not a type name — passing a name is silently ignored by LGL rather than applied. The server resolves this at runtime (preferring a type literally named "General", falling back to whatever type exists first) rather than hardcoding an ID, since type IDs are account-specific. This same fix applies to `create_note`/`update_note`, which previously accepted a `note_type` string that never actually applied — invalid type names now raise a clear error instead of silently creating an untyped note.
 
 ---
 

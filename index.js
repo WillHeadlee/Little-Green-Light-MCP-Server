@@ -87,6 +87,80 @@ async function readErrorBody(res) {
   }
 }
 
+// ─── Note Types ──────────────────────────────────────────────────────────────
+// LGL's direct write API takes note_type_id (a numeric ID), not a type name
+// — passing a name string (even one matching an existing type) is silently
+// ignored rather than applied or rejected. IDs are per-account, so they're
+// resolved at runtime rather than hardcoded, and cached for the process
+// lifetime since account note types don't change during a session.
+let _noteTypesCache;
+async function fetchNoteTypes() {
+  if (_noteTypesCache) return _noteTypesCache;
+  const data = await lglRequest("GET", "/types/note_types");
+  _noteTypesCache = data.items ?? data;
+  return _noteTypesCache;
+}
+
+// Strict lookup for user-specified note types (create_note/update_note):
+// throws with the available options rather than silently dropping the type,
+// since a caller who named a type expects it to actually be applied.
+async function resolveNoteTypeIdByName(name) {
+  if (name === undefined) return undefined;
+  const types = await fetchNoteTypes();
+  const match = types.find((t) => t.name?.toLowerCase() === name.toLowerCase());
+  if (!match) {
+    const available = types.map((t) => t.name).join(", ");
+    throw new Error(`Unknown note type "${name}". Available types in this account: ${available || "(none)"}`);
+  }
+  return match.id;
+}
+
+// Tolerant lookup for internal/automated note-writing (access-audit
+// logging): falls back to "General" or the first available type, and to no
+// type at all if the lookup itself fails, since audit logging must never
+// throw and break the read it's attached to.
+async function resolveDefaultNoteTypeId() {
+  try {
+    const types = await fetchNoteTypes();
+    const general = types.find((t) => t.name === "General");
+    return (general ?? types[0])?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Access Audit Logging ────────────────────────────────────────────────────
+// Writes a note directly to the LGL API (not the Integration Queue — this
+// needs to fire unattended, not wait on human approval) whenever a tool opens
+// a single constituent's file. Deliberately bypasses LGL_READ_ONLY: the audit
+// trail should keep working precisely when a session is in cautious/read-only
+// mode, not go silent. Scoped to single-record detail views only
+// (get_constituent, get_donor_context) — bulk list_*/search_* calls do not
+// log, since noting every row of a 50-record list would flood constituents'
+// note history. Best-effort: a logging failure never fails the read that
+// triggered it.
+async function logAccessNote(constituentId, toolName) {
+  try {
+    const now = new Date();
+    const noteDate = now.toISOString().slice(0, 10);
+    const timestamp = now.toISOString().replace("T", " ").slice(0, 16) + " UTC";
+    const noteTypeId = await resolveDefaultNoteTypeId();
+    const body = {
+      // The "[AI Access Log]" text prefix is what actually makes these notes
+      // identifiable/filterable — note_type_id just points at whatever
+      // generic type this account has (e.g. "General"), since LGL doesn't
+      // auto-create a new named type from a direct API write the way the
+      // Integration Queue's field mapping does.
+      text: `[AI Access Log] Record accessed via LGL MCP Server (${toolName}) on ${timestamp}.`,
+      note_date: noteDate,
+    };
+    if (noteTypeId !== null) body.note_type_id = noteTypeId;
+    await lglRequest("POST", `/constituents/${constituentId}/notes`, body);
+  } catch (err) {
+    console.error(`[access-audit] Failed to log note for constituent ${constituentId}: ${err.message}`);
+  }
+}
+
 // ─── LGL Integration Queue (human-reviewed writes) ──────────────────────────
 // Posts flat key/value pairs to LGL's own custom-integration webhook listener
 // (LGL Settings → Integrations). Submissions land in the Integration Queue for
@@ -270,7 +344,7 @@ const TOOLS = [
   },
   {
     name: "get_constituent",
-    description: "Get full details for a single constituent by ID",
+    description: "Get full details for a single constituent by ID. Writes an 'AI Access Log' note directly to that constituent's record noting when and by which tool it was accessed — this happens automatically and cannot be suppressed, including under LGL_READ_ONLY.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1421,7 +1495,7 @@ const TOOLS = [
   },
   {
     name: "get_donor_context",
-    description: "One-shot lookup that returns a constituent's profile plus their recent giving history, group memberships, and recent notes. Saves 4-5 round trips compared to calling get_constituent + list_gifts + list_group_memberships + list_notes separately for the common 'tell me about <donor>' workflow. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple constituents match).",
+    description: "One-shot lookup that returns a constituent's profile plus their recent giving history, group memberships, and recent notes. Saves 4-5 round trips compared to calling get_constituent + list_gifts + list_group_memberships + list_notes separately for the common 'tell me about <donor>' workflow. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple constituents match). Writes an 'AI Access Log' note directly to that constituent's record noting when and by which tool it was accessed — this happens automatically and cannot be suppressed, including under LGL_READ_ONLY.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1640,7 +1714,9 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "get_constituent": {
-      return toText(await lglRequest("GET", `/constituents/${args.id}`));
+      const constituent = await lglRequest("GET", `/constituents/${args.id}`);
+      await logAccessNote(args.id, "get_constituent");
+      return toText(constituent);
     }
 
     case "create_constituent": {
@@ -2001,7 +2077,7 @@ async function handleTool(name, args, authInfo) {
       const body = {
         text: args.text,
         note_date: args.note_date,
-        note_type: args.note_type,
+        note_type_id: await resolveNoteTypeIdByName(args.note_type),
         subject: args.subject,
       };
       return toText(await lglRequest("POST", `/constituents/${args.constituent_id}/notes`, body));
@@ -2011,7 +2087,7 @@ async function handleTool(name, args, authInfo) {
       const body = {};
       if (rest.text !== undefined) body.text = rest.text;
       if (rest.note_date !== undefined) body.note_date = rest.note_date;
-      if (rest.note_type !== undefined) body.note_type = rest.note_type;
+      if (rest.note_type !== undefined) body.note_type_id = await resolveNoteTypeIdByName(rest.note_type);
       if (rest.subject !== undefined) body.subject = rest.subject;
       return toText(await lglRequest("PATCH", `/notes/${id}`, body));
     }
@@ -2540,12 +2616,14 @@ async function handleTool(name, args, authInfo) {
 
       // Fan out the dependent reads. Group memberships and notes are optional
       // (not every account exposes them on every constituent), so swallow
-      // 404s on those rather than failing the whole context call.
+      // 404s on those rather than failing the whole context call. The audit
+      // note runs alongside these rather than blocking on them.
       const [constituent, giftsData, groupsData, notesData] = await Promise.all([
         lglRequest("GET", `/constituents/${id}`),
         lglRequest("GET", `/constituents/${id}/gifts?limit=${giftLimit}`).catch((e) => ({ _error: e.message })),
         lglRequest("GET", `/constituents/${id}/group_memberships`).catch((e) => ({ _error: e.message })),
         lglRequest("GET", `/constituents/${id}/notes?limit=${noteLimit}`).catch((e) => ({ _error: e.message })),
+        logAccessNote(id, "get_donor_context"),
       ]);
 
       return toText({
@@ -2664,7 +2742,7 @@ function assertWriteAllowed(name) {
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.4.0" },
+  { name: "lgl-mcp", version: "1.5.0" },
   { capabilities: { tools: {} } }
 );
 
