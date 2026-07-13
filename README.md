@@ -12,8 +12,9 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 - **Activities & Notes:** Log notes, write contact reports, track volunteer hours, and schedule reminders.
 - **Groups & Memberships:** Organize constituents into customizable groups and membership levels.
 - **One-Shot Donor Lookup:** `get_donor_context` returns profile + recent gifts + group memberships + recent notes in a single call (resolves by name or ID).
+- **Full Profile Export:** `export_constituent_profile` mirrors LGL's own "Export Profile" button — full record, complete gift history, relationships, class/school affiliations, memberships, volunteer time, contact reports, appeal requests, event invitations, group memberships, and notes, fetched in parallel in one call.
 - **Read-Only Safety:** `LGL_READ_ONLY=true` refuses every mutation and hides write tools from `tools/list`. All tools publish MCP destructive/idempotent annotations.
-- **Access Audit Trail:** `get_constituent` and `get_donor_context` automatically write an `[AI Access Log]` note directly to the constituent's record noting when it was viewed — this cannot be disabled and works even under `LGL_READ_ONLY`, since the point is to know what was looked at, especially during cautious/exploratory sessions. See [Access Audit Logging](#access-audit-logging) below.
+- **Access Audit Trail:** `get_constituent`, `get_donor_context`, and `export_constituent_profile` automatically write an `[AI Access Log]` note directly to the constituent's record noting when it was viewed — this cannot be disabled and works even under `LGL_READ_ONLY`, since the point is to know what was looked at, especially during cautious/exploratory sessions. See [Access Audit Logging](#access-audit-logging) below.
 - **Human-Reviewed Writes:** Five `submit_*_for_review` tools post to LGL's own Integration Queue webhook instead of the API, so a person approves every write in LGL before it takes effect — stays available even in read-only mode. See [Human-Reviewed Writes](#human-reviewed-writes-integration-queue) below.
 - **Zero-Middleware Architecture:** Data transits directly between the local AI client and the LGL API, reducing security risks and third-party fees.
 
@@ -60,7 +61,7 @@ All tools also publish MCP `annotations` (`readOnlyHint`, `destructiveHint`, `id
 
 ## Access Audit Logging
 
-Whenever `get_constituent` or `get_donor_context` is called, the server writes a note directly to that constituent's record in LGL — e.g. `[AI Access Log] Record accessed via LGL MCP Server (get_constituent) on 2026-07-13 17:24 UTC.` This is unconditional: it isn't a config option, and it fires even when `LGL_READ_ONLY=true`, since an audit trail of what was viewed is most useful precisely during a cautious, read-only session, not something that should go quiet then.
+Whenever `get_constituent`, `get_donor_context`, or `export_constituent_profile` is called, the server writes a note directly to that constituent's record in LGL — e.g. `[AI Access Log] Record accessed via LGL MCP Server (get_constituent) on 2026-07-13 17:24 UTC.` This is unconditional: it isn't a config option, and it fires even when `LGL_READ_ONLY=true`, since an audit trail of what was viewed is most useful precisely during a cautious, read-only session, not something that should go quiet then.
 
 A few things worth knowing:
 - **Scope is single-record detail views only.** Bulk `list_*`/`search_*` calls do *not* log — noting every row of a 50-record list would flood constituents' note history with little audit value. Only tools that open one specific donor's file do.

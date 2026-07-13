@@ -1,6 +1,6 @@
 {
   "name": "lgl-mcp-server",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "mcpName": "io.github.WillHeadlee/lgl-mcp-server",
   "description": "MCP server for the Little Green Light nonprofit CRM — manage constituents, gifts, groups, activities, and contact records directly without third-party middleware.",
   "type": "module",

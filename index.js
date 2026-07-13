@@ -290,6 +290,32 @@ function summaryConstituent(c) {
   };
 }
 
+// Resolves a constituent_id from either a direct ID or a name to search for.
+// Shared by every "look up one donor" composite tool (get_donor_context,
+// export_constituent_profile) so the ambiguous-match/no-match behavior stays
+// identical across them: search and require an unambiguous match, returning
+// the candidate list on ambiguity so the model can ask the user or retry
+// with a specific ID.
+async function resolveConstituentId(args) {
+  if (args.constituent_id) return args.constituent_id;
+  if (!args.name) {
+    throw new Error("Provide either constituent_id or name.");
+  }
+  const params = new URLSearchParams({ q: args.name, limit: "10" });
+  const search = await lglRequest("GET", `/constituents/search?${params}`);
+  const matches = (search.items ?? search) || [];
+  if (!Array.isArray(matches) || matches.length === 0) {
+    throw new Error(`No constituent found matching "${args.name}". Try a broader query with search_constituents.`);
+  }
+  if (matches.length > 1) {
+    const candidates = matches.slice(0, 10).map(summaryConstituent);
+    throw new Error(
+      `Multiple constituents match "${args.name}". Re-call with a specific constituent_id. Candidates: ${JSON.stringify(candidates)}`
+    );
+  }
+  return matches[0].id;
+}
+
 // LGL's field names for amount/date are inconsistent across endpoints: the
 // nested /constituents/{id}/gifts list uses amount/gift_date, while
 // /gifts/{id} and /gifts/search use received_amount/received_date. Read both.
@@ -1506,6 +1532,19 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: "export_constituent_profile",
+    description: "Comprehensive one-shot export of everything LGL has on a constituent, mirroring LGL's own 'Export Profile' button: full record (contact info embedded), full gift history, relationships, class/school affiliations, memberships, volunteer time, contact reports, appeal requests, event invitations, group memberships, and notes — fetched in parallel in a single call. Slower and heavier than get_donor_context; prefer that for a quick 'tell me about <donor>' lookup and use this when you actually need everything. Accepts either constituent_id (preferred) or name (resolved via search; errors with candidates if multiple match). Writes an 'AI Access Log' note directly to the constituent's record — this happens automatically and cannot be suppressed, including under LGL_READ_ONLY.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        constituent_id: { type: "number", description: "Direct lookup by ID (preferred if known)" },
+        name: { type: "string", description: "Name to resolve via search if ID isn't known. Errors with a candidate list if multiple constituents match." },
+        gift_limit: { type: "number", default: 200, description: "Max gifts to include" },
+        note_limit: { type: "number", default: 100, description: "Max notes to include" },
+      },
+    },
+  },
 
   // ── 11. Generic API Call Tool ──────────────────────────────────────────────
   {
@@ -2588,29 +2627,7 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "get_donor_context": {
-      // Resolve to a numeric constituent_id first. If only a name is given,
-      // search and require an unambiguous match — return the candidate list
-      // on ambiguity so the model can ask the user or retry with an ID.
-      let id = args.constituent_id;
-      if (!id) {
-        if (!args.name) {
-          throw new Error("Provide either constituent_id or name.");
-        }
-        const params = new URLSearchParams({ q: args.name, limit: "10" });
-        const search = await lglRequest("GET", `/constituents/search?${params}`);
-        const matches = (search.items ?? search) || [];
-        if (!Array.isArray(matches) || matches.length === 0) {
-          throw new Error(`No constituent found matching "${args.name}". Try a broader query with search_constituents.`);
-        }
-        if (matches.length > 1) {
-          const candidates = matches.slice(0, 10).map(summaryConstituent);
-          throw new Error(
-            `Multiple constituents match "${args.name}". Re-call with a specific constituent_id. Candidates: ${JSON.stringify(candidates)}`
-          );
-        }
-        id = matches[0].id;
-      }
-
+      const id = await resolveConstituentId(args);
       const giftLimit = args.gift_limit ?? 10;
       const noteLimit = args.note_limit ?? 5;
 
@@ -2632,6 +2649,58 @@ async function handleTool(name, args, authInfo) {
         recent_gifts: giftsData._error ? { error: giftsData._error } : (giftsData.items ?? giftsData).map(summaryGift),
         group_memberships: groupsData._error ? { error: groupsData._error } : (groupsData.items ?? groupsData),
         recent_notes: notesData._error ? { error: notesData._error } : (notesData.items ?? notesData),
+      });
+    }
+
+    case "export_constituent_profile": {
+      const id = await resolveConstituentId(args);
+      const giftLimit = args.gift_limit ?? 200;
+      const noteLimit = args.note_limit ?? 100;
+
+      // Every sub-resource beyond the core constituent record is optional —
+      // not every account has relationships/class affiliations/memberships/
+      // volunteer time/contact reports/appeal requests/invitations enabled,
+      // or data in them for this particular person — so each is fetched
+      // independently and a 404/error on one doesn't fail the whole export.
+      const fetchOptional = (path) => lglRequest("GET", path).catch((e) => ({ _error: e.message }));
+      const unwrap = (data) => (data?._error ? { error: data._error } : (data.items ?? data));
+
+      const [
+        constituent, giftsData, groupsData, notesData,
+        relationshipsData, classAffiliationsData, membershipsData,
+        volunteerTimesData, contactReportsData, appealRequestsData,
+        invitationsData, categoriesData,
+      ] = await Promise.all([
+        lglRequest("GET", `/constituents/${id}`),
+        fetchOptional(`/constituents/${id}/gifts?limit=${giftLimit}`),
+        fetchOptional(`/constituents/${id}/group_memberships`),
+        fetchOptional(`/constituents/${id}/notes?limit=${noteLimit}`),
+        fetchOptional(`/constituents/${id}/constituent_relationships`),
+        fetchOptional(`/constituents/${id}/class_affiliations`),
+        fetchOptional(`/constituents/${id}/memberships`),
+        fetchOptional(`/constituents/${id}/volunteer_times`),
+        fetchOptional(`/constituents/${id}/contact_reports`),
+        fetchOptional(`/constituents/${id}/appeal_requests`),
+        fetchOptional(`/constituents/${id}/invitations`),
+        fetchOptional(`/constituents/${id}/categories`),
+        logAccessNote(id, "export_constituent_profile"),
+      ]);
+
+      const giftsUnwrapped = unwrap(giftsData);
+      return toText({
+        constituent: summaryConstituent(constituent),
+        full_record: constituent,
+        gifts: Array.isArray(giftsUnwrapped) ? giftsUnwrapped.map(summaryGift) : giftsUnwrapped,
+        group_memberships: unwrap(groupsData),
+        notes: unwrap(notesData),
+        relationships: unwrap(relationshipsData),
+        class_affiliations: unwrap(classAffiliationsData),
+        memberships: unwrap(membershipsData),
+        volunteer_times: unwrap(volunteerTimesData),
+        contact_reports: unwrap(contactReportsData),
+        appeal_requests: unwrap(appealRequestsData),
+        event_invitations: unwrap(invitationsData),
+        categories: unwrap(categoriesData),
       });
     }
 
@@ -2742,7 +2811,7 @@ function assertWriteAllowed(name) {
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.5.0" },
+  { name: "lgl-mcp", version: "1.6.0" },
   { capabilities: { tools: {} } }
 );
 
