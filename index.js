@@ -87,6 +87,75 @@ async function readErrorBody(res) {
   }
 }
 
+// ─── LGL Integration Queue (human-reviewed writes) ──────────────────────────
+// Posts flat key/value pairs to LGL's own custom-integration webhook listener
+// (LGL Settings → Integrations). Submissions land in the Integration Queue for
+// a human to approve — never written to LGL directly — so these are exempt
+// from LGL_READ_ONLY. Field mapping (which key -> which LGL field) is
+// configured in LGL's UI, not here; sending an unmapped key is silently
+// ignored by LGL rather than erroring.
+
+async function postToIntegrationQueue(fields) {
+  const listenerUrl = process.env.LGL_INTEGRATION_LISTENER_URL;
+  if (!listenerUrl) {
+    throw new Error(
+      "LGL_INTEGRATION_LISTENER_URL is not set. Set it to the listener URL from LGL Settings → Integrations for this custom integration."
+    );
+  }
+
+  const payload = new URLSearchParams();
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined && value !== null && value !== "") {
+      payload.set(key, String(value));
+    }
+  }
+  if ([...payload.keys()].length === 0) {
+    throw new Error("Provide at least one mapped field to submit.");
+  }
+
+  const res = await fetch(listenerUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: payload.toString(),
+  });
+  const responseText = await res.text();
+  if (!res.ok) {
+    throw new Error(`LGL Integration listener returned ${res.status}: ${responseText}`);
+  }
+
+  return {
+    status: "submitted_for_review",
+    note: "Sent to LGL's Integration Queue. This has NOT been written to LGL — a human must approve it in LGL (Settings → Integrations → Integration Queue) first.",
+    fields_sent: Object.fromEntries(payload),
+    listener_response: responseText,
+  };
+}
+
+// Flattens up to `count` repeated sub-records (phone/email/address) into the
+// numbered key convention LGL's mapping uses: slot 1 is bare (e.g. "phone",
+// "phone_type"), slots 2+ get a numeric suffix (e.g. "phone_2", "phone_2_type").
+function flattenSlots(items, map, baseKey, { maxSlots = 3, firstSlotBare = true } = {}) {
+  const out = {};
+  if (!Array.isArray(items)) return out;
+  items.slice(0, maxSlots).forEach((item, i) => {
+    const slotPrefix = i === 0 && firstSlotBare ? baseKey : `${baseKey}_${i + 1}`;
+    for (const [argKey, lglSuffix] of Object.entries(map)) {
+      if (item[argKey] !== undefined) {
+        out[`${slotPrefix}${lglSuffix}`] = item[argKey];
+      }
+    }
+  });
+  return out;
+}
+
+// Matching fields shared by every non-constituent submission tool, used by
+// LGL's "Match on email address and name" rule to find the right constituent.
+const MATCHING_PROPS = {
+  first_name: { type: "string", description: "Constituent's first name, for matching" },
+  last_name: { type: "string", description: "Constituent's last name, for matching" },
+  email: { type: "string", description: "Constituent's email, for matching" },
+};
+
 // ─── Date Helpers (UTC) ──────────────────────────────────────────────────────
 // Use UTC-anchored math so cutoffs don't shift across local timezones near
 // midnight. Returns YYYY-MM-DD.
@@ -1380,21 +1449,173 @@ const TOOLS = [
   },
 
   // ── 12. Integration Queue (Human-Reviewed Writes) ────────────────────────
+  // All five tools below post to the same LGL custom-integration webhook
+  // listener (LGL Settings → Integrations). None write to LGL directly —
+  // every submission lands in the Integration Queue for a human to approve,
+  // so all five stay available even when LGL_READ_ONLY is set. Matching an
+  // existing constituent uses LGL's "match on email address and name" rule
+  // (LGL constituent ID as a match key is configured but not currently
+  // functioning on this integration — omit record_id).
   {
     name: "submit_constituent_for_review",
-    description: "Submit a new or updated constituent to LGL's Integration Queue for human review, via LGL's own custom-integration webhook listener (Settings → Integrations). This does NOT write to LGL directly — the record lands in the Integration Queue and a person must approve it before it takes effect. Safe to use even when LGL_READ_ONLY is set, since nothing is written without human approval. Only the fields listed here are mapped by the configured integration (constituent_type, first_name, last_name, email, phone, company, job_title, record_id) — anything else would need a new field mapping added in LGL's integration settings first.",
+    description: "Submit a new or updated constituent to LGL's Integration Queue for human review: identity/name fields, up to 3 phone numbers, up to 3 emails, up to 2 mailing addresses, a website, constituent category fields, and a relationship. This does NOT write to LGL directly.",
     inputSchema: {
       type: "object",
       properties: {
-        constituent_type: { type: "string", description: "e.g. 'Individual' or 'Organization'" },
-        first_name: { type: "string" },
-        last_name: { type: "string" },
-        email: { type: "string" },
-        phone: { type: "string" },
-        company: { type: "string" },
-        job_title: { type: "string" },
-        record_id: { type: "string", description: "LGL constituent ID — set this to update/match an existing constituent instead of creating a new one" },
+        constituent_type: { type: "string", description: "'Individual' or 'Organization'" },
+        prefix: { type: "string" }, first_name: { type: "string" }, middle_name: { type: "string" },
+        last_name: { type: "string" }, suffix: { type: "string" }, maiden_name: { type: "string" },
+        organization_name: { type: "string", description: "For Organization-type constituents" },
+        salutation: { type: "string" }, addressee: { type: "string" },
+        alt_salutation: { type: "string" }, alt_addressee: { type: "string" },
+        spouse_name: { type: "string" }, spouse_first_name: { type: "string" }, spouse_last_name: { type: "string" },
+        spouse_nickname: { type: "string" }, marital_status: { type: "string" },
+        honorary_name: { type: "string" }, annual_report_name: { type: "string" },
+        company: { type: "string", description: "Employer/Organization" }, job_title: { type: "string" },
+        birthday: { type: "string", description: "YYYY-MM-DD; use year 2999 if unknown" },
+        assistant_name: { type: "string" }, nicknames: { type: "string" },
+        external_id: { type: "string", description: "Your own external constituent ID" },
+        deceased: { type: "string", description: "yes/no" }, deceased_date: { type: "string" },
+        gives_anonymously: { type: "string", description: "yes/no" },
+        phones: {
+          type: "array", maxItems: 3,
+          description: "Up to 3 phone numbers; first item is the primary",
+          items: {
+            type: "object",
+            properties: {
+              number: { type: "string" },
+              type: { type: "string", description: "Home, Work, Mobile, Fax, Assistant, Skype, Other" },
+              preferred: { type: "string", description: "yes/no" },
+              invalid: { type: "string", description: "yes/no" },
+            },
+          },
+        },
+        emails: {
+          type: "array", maxItems: 3,
+          description: "Up to 3 email addresses; first item is the primary",
+          items: {
+            type: "object",
+            properties: {
+              address: { type: "string" },
+              type: { type: "string", description: "Home, Work, Other" },
+              preferred: { type: "string", description: "yes/no" },
+              invalid: { type: "string", description: "yes/no" },
+            },
+          },
+        },
+        addresses: {
+          type: "array", maxItems: 2,
+          description: "Up to 2 mailing addresses; first item is the primary",
+          items: {
+            type: "object",
+            properties: {
+              line1: { type: "string" }, line2: { type: "string" }, line3: { type: "string" },
+              city: { type: "string" }, state: { type: "string" }, zip: { type: "string" },
+              country: { type: "string" }, county: { type: "string" },
+              type: { type: "string", description: "Home, Work, Other" },
+              preferred: { type: "string", description: "yes/no" },
+              invalid: { type: "string", description: "yes/no" },
+              seasonal_from: { type: "string" }, seasonal_to: { type: "string" },
+            },
+          },
+        },
+        website: {
+          type: "object",
+          properties: { url: { type: "string" }, type: { type: "string" } },
+        },
+        contact_type: { type: "string" }, capacity: { type: "string" },
+        groups: { type: "string", description: "Semicolon or comma separated for multiple" },
+        interest_level: { type: "string" }, stewards: { type: "string" }, primary_steward: { type: "string" },
+        acknowledgment_preference: { type: "string" },
+        communication_tags: { type: "string", description: "Semicolon or comma separated for multiple" },
+        relationship_from: { type: "string" }, relationship_to: { type: "string" },
       },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "submit_gift_for_review",
+    description: "Submit a gift, pledge, or goal to LGL's Integration Queue for human review, including tribute (honor/memorial) details. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...MATCHING_PROPS,
+        gift_type: { type: "string", description: "Gift, In Kind, Pledge, Other Income, In Honor of, In Memory of, Soft Credit, Matching, Installment" },
+        gift_amount: { type: "number" }, gift_date: { type: "string", description: "YYYY-MM-DD" },
+        campaign_name: { type: "string" }, fund_name: { type: "string" },
+        gift_appeal_name: { type: "string" }, gift_event_name: { type: "string" },
+        gift_category: { type: "string" }, team_member: { type: "string" }, gift_note: { type: "string" },
+        external_gift_id: { type: "string" },
+        deductible_amount: { type: "number" }, deposited_amount: { type: "number" },
+        deposit_date: { type: "string" }, payment_type: { type: "string" }, check_number: { type: "string" },
+        ack_mailing_template: { type: "string" }, ack_mailing_date: { type: "string" },
+        gift_is_anonymous: { type: "string", description: "yes/no" },
+        tribute_name: { type: "string", description: "\"Honorary - General\", \"Memorial - General\", or a named tribute" },
+        tribute_honoree_name: { type: "string" }, tribute_dedication: { type: "string" },
+        tribute_recipient_name: { type: "string" }, tribute_recipient_salutation: { type: "string" },
+        tribute_recipient_email: { type: "string" }, tribute_recipient_address: { type: "string" },
+        tribute_notification_template: { type: "string" },
+        installment_due_date: { type: "string" }, payment_amount: { type: "number" },
+        pledge_amount: { type: "number" }, pledge_start_date: { type: "string" },
+        payment_interval: { type: "string", description: "W, B, M, Q, S, or Y" },
+        write_off_amount: { type: "number" }, write_off_date: { type: "string" },
+        auto_generate_installments: { type: "string", description: "yes/no" },
+        goal_name: { type: "string" }, ask_amount: { type: "number" }, projected_amount: { type: "number" },
+        projected_minimum_amount: { type: "number" }, goal_date: { type: "string" }, goal_status: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "submit_note_for_review",
+    description: "Submit a note to LGL's Integration Queue for human review. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...MATCHING_PROPS,
+        note_type: { type: "string" },
+        note_date: { type: "string", description: "YYYY-MM-DD" },
+        note_text: { type: "string" },
+      },
+      required: ["note_text"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "submit_event_registration_for_review",
+    description: "Submit an event registration/invitation to LGL's Integration Queue for human review. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...MATCHING_PROPS,
+        event_name: { type: "string", description: "Required to create or associate with an event" },
+        attended: { type: "string", description: "yes/no" },
+        inv_notes: { type: "string" },
+        rsvp_status: { type: "string", description: "Unknown, Invited, Maybe, Yes, No" },
+        inv_attendee_count: { type: "number" }, inv_guest_names: { type: "string" },
+        date_attended: { type: "string", description: "For recurring events" },
+        event_segment_name: { type: "string" },
+        is_guest: { type: "string", description: "yes/no" },
+        guest_first_name: { type: "string" }, guest_last_name: { type: "string" },
+      },
+      required: ["event_name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "submit_appeal_request_for_review",
+    description: "Submit an appeal request/status to LGL's Integration Queue for human review. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...MATCHING_PROPS,
+        appeal_name: { type: "string", description: "Required to create or associate with an appeal" },
+        appeal_segment_name: { type: "string" }, appeal_segment_code: { type: "string" },
+        appeal_ask_amount: { type: "number" },
+        appeal_status: { type: "string", description: "Open, Called, Considering, Declined, Donated" },
+        appeal_team_member: { type: "string" },
+      },
+      required: ["appeal_name"],
       additionalProperties: false,
     },
   },
@@ -2346,43 +2567,41 @@ async function handleTool(name, args, authInfo) {
     // ── 12. Integration Queue (Human-Reviewed Writes) ────────────────────────
 
     case "submit_constituent_for_review": {
-      const listenerUrl = process.env.LGL_INTEGRATION_LISTENER_URL;
-      if (!listenerUrl) {
-        throw new Error(
-          "LGL_INTEGRATION_LISTENER_URL is not set. Set it to the listener URL from LGL Settings → Integrations for this custom integration."
-        );
-      }
+      const {
+        phones, emails, addresses, website,
+        ...scalars
+      } = args;
 
-      const MAPPED_FIELDS = [
-        "constituent_type", "first_name", "last_name", "email",
-        "phone", "company", "job_title", "record_id",
-      ];
-      const payload = new URLSearchParams();
-      for (const key of MAPPED_FIELDS) {
-        if (args[key] !== undefined && args[key] !== null && args[key] !== "") {
-          payload.set(key, String(args[key]));
-        }
-      }
-      if ([...payload.keys()].length === 0) {
-        throw new Error("Provide at least one mapped field (e.g. first_name, last_name, email) to submit.");
-      }
+      const fields = {
+        ...scalars,
+        ...flattenSlots(phones, { number: "", type: "_type", preferred: "_preferred", invalid: "_invalid" }, "phone", { maxSlots: 3, firstSlotBare: true }),
+        ...flattenSlots(emails, { address: "", type: "_type", preferred: "_preferred", invalid: "_invalid" }, "email", { maxSlots: 3, firstSlotBare: true }),
+        ...flattenSlots(addresses, {
+          line1: "_line1", line2: "_line2", line3: "_line3", city: "_city", state: "_state",
+          zip: "_zip", country: "_country", county: "_county", type: "_type",
+          preferred: "_preferred", invalid: "_invalid", seasonal_from: "_seasonal_from", seasonal_to: "_seasonal_to",
+        }, "address", { maxSlots: 2, firstSlotBare: false }),
+      };
+      if (website?.url !== undefined) fields.website_1 = website.url;
+      if (website?.type !== undefined) fields.website_1_type = website.type;
 
-      const res = await fetch(listenerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: payload.toString(),
-      });
-      const responseText = await res.text();
-      if (!res.ok) {
-        throw new Error(`LGL Integration listener returned ${res.status}: ${responseText}`);
-      }
+      return toText(await postToIntegrationQueue(fields));
+    }
 
-      return toText({
-        status: "submitted_for_review",
-        note: "Sent to LGL's Integration Queue. This has NOT been written to the constituent database — a human must approve it in LGL (Settings → Integrations → Integration Queue) first.",
-        fields_sent: Object.fromEntries(payload),
-        listener_response: responseText,
-      });
+    case "submit_gift_for_review": {
+      return toText(await postToIntegrationQueue(args));
+    }
+
+    case "submit_note_for_review": {
+      return toText(await postToIntegrationQueue(args));
+    }
+
+    case "submit_event_registration_for_review": {
+      return toText(await postToIntegrationQueue(args));
+    }
+
+    case "submit_appeal_request_for_review": {
+      return toText(await postToIntegrationQueue(args));
     }
 
     default:
@@ -2404,11 +2623,15 @@ function classifyTool(name) {
   if (name === "call_lgl_api") {
     return { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
   }
-  if (name === "submit_constituent_for_review") {
-    // Deliberately exempt from LGL_READ_ONLY: this never writes to LGL
-    // directly. It only POSTs to LGL's own Integration Queue listener, where
-    // a human must approve the record before it's applied — so it's safe to
-    // leave available even in read-only deployments.
+  const INTEGRATION_QUEUE_TOOLS = [
+    "submit_constituent_for_review", "submit_gift_for_review", "submit_note_for_review",
+    "submit_event_registration_for_review", "submit_appeal_request_for_review",
+  ];
+  if (INTEGRATION_QUEUE_TOOLS.includes(name)) {
+    // Deliberately exempt from LGL_READ_ONLY: none of these write to LGL
+    // directly. They only POST to LGL's own Integration Queue listener, where
+    // a human must approve the record before it's applied — so they're safe
+    // to leave available even in read-only deployments.
     return { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true };
   }
   if (name.startsWith("delete_") || name.startsWith("remove_")) {
@@ -2441,7 +2664,7 @@ function assertWriteAllowed(name) {
 // ─── Server Setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "lgl-mcp", version: "1.3.0" },
+  { name: "lgl-mcp", version: "1.4.0" },
   { capabilities: { tools: {} } }
 );
 
