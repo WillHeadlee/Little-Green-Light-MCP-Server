@@ -20,13 +20,15 @@ Verified live against the production API this session (not just documentation):
 - Numeric (`custom_attr_int`) and date (`custom_attr_from`/`custom_attr_to`) attribute filtering exist in LGL's docs but are **out of scope** for this tool per user decision — this account has no numeric/date custom attributes to verify against, and the immediate need is text attributes with blank/not-blank.
 - Standard field tokens confirmed from LGL's docs: `name`, `eaddr`, `phone_number`, `street`, `city`, `state`, `postal_code`, `country`, `keyword` (single ID, not comma-separated), `updated_from`/`updated_to` (`YYYY-MM-DDTHH:MM:SSZ`), `membership_status` (0=lapsed, 1=active), `membership_level` (comma-separated IDs), `membership_end_date_from`/`_to`, `external_id`, `constituent_type` (0=individual, 1=organization), `groups` (comma-separated IDs), `lists` (comma-separated IDs).
 - `/keywords` has no flat "list all" endpoint, but `GET /categories` already nests each category's keywords inline (confirmed live — every category in a 3-category test account returned a populated `keywords` array). Resolving a keyword by name is therefore one `GET /categories` call flattened, not a fan-out to `/categories/{id}/keywords` per category as originally assumed.
-- **`/constituents/search` results omit `custom_attrs` by default** — confirmed live: a search result item has none of the custom-attribute fields present on a single `GET /constituents/{id}` record. Adding `expand=custom_attrs` to the search request restores it (confirmed live: same query with `expand=custom_attrs` returns `"custom_attrs": []` on each item). The tool must always send `expand=custom_attrs` on its search call, not just on individual lookups.
+- **`/constituents/search` results omit `custom_attrs` by default** — confirmed live: a search result item has none of the custom-attribute fields present on a single `GET /constituents/{id}` record. Adding `expand=custom_attrs` to the search request restores it (confirmed live: same query with `expand=custom_attrs` returns `"custom_attrs": []` on each item). **Revised after real usage:** filtering ON a custom attribute (via `q[]=custom_attr=...`) works independently of `expand` — the tool originally sent `expand=custom_attrs` unconditionally, which meant every result (even ones matched on name/city/whatever) carried full attribute values, including long text fields, even when nothing asked for them. `expand` is now gated behind an explicit `include_custom_attrs` input, off by default.
+- **`bl`/`nb` only match constituents that have a row for the attribute at all** — confirmed live (see the account note above): both operators returned zero matches when no constituent had ever had the attribute touched. So "blank" (a row exists, value is empty) and "never touched" (no row exists) are different states that LGL's own operators cannot distinguish between via a single query. A "never touched" tool has to diff the full constituent ID set against the union of blank+not_blank matches; see `constituents_never_touched_attribute` below.
 
 ## Tool interface
 
 ```
 search_constituents_advanced({
   query?: string,                 // free text; reuses constituentSearchExpr (name/email/phone routing)
+  include_custom_attrs?: boolean, // default false — fetch each result's custom attribute values; filtering on custom_attributes does NOT require this
 
   custom_attributes?: [
     // Shape A — blank checks take no value (schema-enforced via oneOf, not a runtime check)
@@ -94,7 +96,7 @@ No TTL: the cache lives for the server process's lifetime, and a resolution miss
 
 ## Query building
 
-0. Always add `expand=custom_attrs` to the search request (see confirmed behavior above) so results carry attribute values.
+0. Add `expand=custom_attrs` to the search request only when `include_custom_attrs` is true — filtering on `custom_attributes` does not require it, so it stays off by default to keep responses small.
 1. If `query` is provided, add `q[]=<constituentSearchExpr(query)>`.
 2. For each `custom_attributes` entry: resolve `name` → `key` via the cache, map the friendly operator to LGL's op code, and emit `q[]=custom_attr=<key>|<op>|<value ?? "_">` (placeholder `"_"` when no value, i.e. blank/not_blank).
 3. Standard fields map directly to their documented tokens; `constituent_type`/`membership_status` translate their enum strings to 0/1 (matching the existing `create_constituent`/`update_constituent` translation pattern already in the file). Array-valued standard fields (`membership_level_names`, `group_names`, `list_names`) resolve each name to an ID via the cache and join with commas into a single `q[]` entry. `keyword` resolves to a single ID token (no comma-joining — LGL's docs describe this token as singular).
@@ -103,7 +105,17 @@ No TTL: the cache lives for the server process's lifetime, and a resolution miss
 
 ## Response shape
 
-Reuses `summaryConstituent` (index.js:288) plus the constituent's `custom_attrs` array (confirmed field name via a live record fetch), so filtered-on attribute values are visible in the result — not just IDs. This is a dedicated summary function for this tool (not a change to the shared `summaryConstituent`, to avoid altering existing tools' output).
+Reuses `summaryConstituent` (index.js:288). When `include_custom_attrs` is true, adds the constituent's `custom_attrs` array (confirmed field name via a live record fetch) via a dedicated `summaryConstituentWithAttrs` wrapper — kept separate from `summaryConstituent` so existing tools' output is untouched. When `include_custom_attrs` is false (the default), results carry no `custom_attrs` field at all rather than a placeholder `[]`, so it's unambiguous that attribute data wasn't fetched.
+
+## Companion tool: `constituents_never_touched_attribute`
+
+`search_constituents_advanced`'s `blank` operator only matches constituents that *have* a row for the attribute whose value happens to be empty — it cannot see constituents that have never had the attribute touched at all (no row exists), per the confirmed `bl`/`nb` behavior above. There is no LGL query token for "attribute row does not exist," so finding these requires a diff:
+
+1. Fetch the full constituent ID set (`/constituents/search` with no `q[]` filters, paginated).
+2. Fetch the "touched" ID set: the union of `custom_attr=<key>|bl|_` and `custom_attr=<key>|nb|_` matches (each paginated) — together these are LGL's own server-side computation of every constituent that has a row for the attribute, regardless of its value.
+3. `never_touched = all - touched`, computed locally as a `Set` difference (the only client-side step; everything upstream of it is LGL's own filtering).
+
+All three fetches run in parallel via a shared `paginateConstituentSearch` helper (same bounded-pages-with-`truncated`-flag shape as the existing `paginateGifts`). Input is just `{ name: string, limit?: number }` — `name` resolves through the same custom-attribute cache as `search_constituents_advanced`. Output is `{ attribute, count, constituents }`, where `count` reflects the true total even when `constituents` is capped by `limit`, plus `truncated`/`note` if any underlying query hit its page cap.
 
 ## Error handling
 

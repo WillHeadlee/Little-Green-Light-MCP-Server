@@ -7,6 +7,7 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 ## Features
 
 - **Constituents & Core Management:** Search, retrieve, create, update, and delete constituent records.
+- **Advanced Server-Side Search:** `search_constituents_advanced` filters constituents directly through LGL's own query engine — custom attributes (contains/equals/starts-with/blank/not-blank), keyword, location, membership status/level, groups, lists, and updated date — all AND'd together and referenced by friendly display name rather than internal LGL IDs. Attribute values are only included in results when explicitly requested (`include_custom_attrs`), keeping ordinary filtered lookups lightweight. `constituents_never_touched_attribute` finds records that have never had a given custom attribute set at all — a state LGL's own blank/not-blank operators can't distinguish from "set but empty."
 - **Fundraising & Gifts:** Record new gifts, list transactions (with date-range filters), search payments, and view campaigns, funds, appeals, and events.
 - **Contact Sub-Resources:** Fully manage street addresses, phone numbers, email addresses, and web addresses for constituents.
 - **Activities & Notes:** Log notes, write contact reports, and track volunteer hours.

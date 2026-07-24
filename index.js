@@ -275,6 +275,27 @@ async function paginateGifts(baseQuery, { pageSize = 200, maxPages = 25 } = {}) 
   return { gifts: all, truncated: true };
 }
 
+// Same shape as paginateGifts but against /constituents/search — used by
+// constituents_never_touched_attribute to walk both the full constituent
+// set and a filtered set without a hardcoded page cap silently dropping
+// records the way a single limit=500 call would.
+async function paginateConstituentSearch(baseQuery, { pageSize = 200, maxPages = 25 } = {}) {
+  const all = [];
+  let offset = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams(baseQuery);
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    const data = await lglRequest("GET", `/constituents/search?${params}`);
+    const items = data.items ?? data;
+    if (!Array.isArray(items) || items.length === 0) return { items: all, truncated: false };
+    all.push(...items);
+    if (items.length < pageSize) return { items: all, truncated: false };
+    offset += pageSize;
+  }
+  return { items: all, truncated: true };
+}
+
 // ─── Formatting Helpers ──────────────────────────────────────────────────────
 
 function toText(value) {
@@ -444,8 +465,13 @@ function normalizeToTimestamp(dateStr) {
 async function buildAdvancedSearchParams(args) {
   const params = new URLSearchParams();
   // custom_attrs is omitted from /constituents/search results unless
-  // explicitly expanded (confirmed live), so this is always requested.
-  params.append("expand", "custom_attrs");
+  // explicitly expanded (confirmed live) — but filtering via q[]=custom_attr=...
+  // works independently of this. Only expand when the caller actually wants
+  // attribute values back, so a plain filtered lookup doesn't drag full
+  // attribute text (e.g. a long bio field) into every result by default.
+  if (args.include_custom_attrs) {
+    params.append("expand", "custom_attrs");
+  }
 
   const terms = [];
 
@@ -506,8 +532,9 @@ async function buildAdvancedSearchParams(args) {
 }
 
 // Same shape as summaryConstituent plus the custom attribute values that
-// were actually fetched via expand=custom_attrs — kept separate from
-// summaryConstituent so existing tools' output is untouched.
+// were actually fetched via expand=custom_attrs (only present when
+// include_custom_attrs was requested — see buildAdvancedSearchParams) — kept
+// separate from summaryConstituent so existing tools' output is untouched.
 function summaryConstituentWithAttrs(c) {
   return { ...summaryConstituent(c), custom_attrs: c.custom_attrs ?? [] };
 }
@@ -555,11 +582,16 @@ const TOOLS = [
   },
   {
     name: "search_constituents_advanced",
-    description: "Server-side constituent search combining custom attribute filters (including blank/not-blank checks) with standard LGL filters (keyword, location, membership, groups, lists, updated date) and an optional free-text query. All provided filters AND together, matching LGL's actual q[] behavior — there is no OR support. Custom attributes, keywords, groups, lists, and membership levels are all referenced by their display name (not internal LGL IDs); names are resolved and cached for the life of this server process, so only the first call referencing a given name pays a lookup round-trip.",
+    description: "Server-side constituent search combining custom attribute filters (including blank/not-blank checks) with standard LGL filters (keyword, location, membership, groups, lists, updated date) and an optional free-text query. All provided filters AND together, matching LGL's actual q[] behavior — there is no OR support. Custom attributes, keywords, groups, lists, and membership levels are all referenced by their display name (not internal LGL IDs); names are resolved and cached for the life of this server process, so only the first call referencing a given name pays a lookup round-trip. Filtering ON a custom attribute (via custom_attributes) works independently of whether its VALUE comes back in results — set include_custom_attrs to also fetch attribute values, which is otherwise omitted to keep responses small.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Optional free-text query, routed to name/email/phone like search_constituents" },
+        include_custom_attrs: {
+          type: "boolean",
+          default: false,
+          description: "Include each result's custom attribute values (name/value pairs). Off by default — filtering on custom_attributes does not require this, and turning it on adds the full value of every custom attribute (e.g. long text fields) to every result.",
+        },
         custom_attributes: {
           type: "array",
           description: "Filters on custom attributes, by their display name (e.g. 'Background Info'), not their internal key",
@@ -604,6 +636,18 @@ const TOOLS = [
         limit: { type: "number", default: 20 },
         offset: { type: "number", default: 0 },
       },
+    },
+  },
+  {
+    name: "constituents_never_touched_attribute",
+    description: "Find constituents that have NEVER had a given custom attribute touched — distinct from search_constituents_advanced's 'blank' operator, which only matches constituents that have a row for the attribute whose value happens to be empty. LGL's blank/not_blank operators both confirmed live to return zero matches for constituents that have no row for the attribute at all, so 'never touched' requires diffing the full constituent set against the union of blank+not_blank matches — there is no single LGL query for it. Paginates through both sets server-side (LGL's own filters compute the blank/not_blank sets; this only diffs the resulting ID sets, since LGL has no 'attribute row does not exist' query token).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Custom attribute display name, e.g. 'Background Info'" },
+        limit: { type: "number", default: 50, description: "Max constituents to return (the count field reflects the true total even if results are capped)" },
+      },
+      required: ["name"],
     },
   },
   {
@@ -2028,7 +2072,35 @@ async function handleTool(name, args, authInfo) {
     case "search_constituents_advanced": {
       const params = await buildAdvancedSearchParams({ limit: 20, offset: 0, ...args });
       const data = await lglRequest("GET", `/constituents/search?${params}`);
-      return toText((data.items ?? data).map(summaryConstituentWithAttrs));
+      const items = data.items ?? data;
+      const summaries = args.include_custom_attrs ? items.map(summaryConstituentWithAttrs) : items.map(summaryConstituent);
+      return toText(summaries);
+    }
+
+    case "constituents_never_touched_attribute": {
+      const key = await resolveCustomAttributeKey(args.name);
+      const limit = args.limit ?? 50;
+
+      const [allResult, blankResult, notBlankResult] = await Promise.all([
+        paginateConstituentSearch(new URLSearchParams()),
+        paginateConstituentSearch(new URLSearchParams([["q[]", `custom_attr=${key}|bl|_`]])),
+        paginateConstituentSearch(new URLSearchParams([["q[]", `custom_attr=${key}|nb|_`]])),
+      ]);
+
+      const touchedIds = new Set([...blankResult.items, ...notBlankResult.items].map((c) => c.id));
+      const neverTouched = allResult.items.filter((c) => !touchedIds.has(c.id));
+      const truncated = allResult.truncated || blankResult.truncated || notBlankResult.truncated;
+
+      const result = {
+        attribute: args.name,
+        count: neverTouched.length,
+        constituents: neverTouched.slice(0, limit).map(summaryConstituent),
+      };
+      if (truncated) {
+        result.truncated = true;
+        result.note = "One or more underlying queries hit the page cap (5000 records) — count and results may be incomplete for very large accounts.";
+      }
+      return toText(result);
     }
 
     case "list_constituents": {
