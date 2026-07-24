@@ -20,11 +20,20 @@ yarn-error.log*
 *.csv
 *.xlsx
 
+# Personal / org documents (timesheets, board materials, donor exports, etc.)
+*.pdf
+*.docx
+*.pptx
+*.eml
+OutreachEmail.txt
+
 # Cache and local data
 *.json
 !package.json
 !package-lock.json
 !server.json
+__pycache__/
+*.pyc
 
 # OS files
 .DS_Store
@@ -32,4 +41,6 @@ Thumbs.db
 
 # Sub-projects
 AI Fluency Course/
+Goodstacks/
+Little Green Light/
 
