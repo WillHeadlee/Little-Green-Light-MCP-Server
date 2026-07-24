@@ -288,12 +288,57 @@ function toError(err) {
 function summaryConstituent(c) {
   return {
     id: c.id,
-    name: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || c.organization_name || `ID ${c.id}`,
+    name: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || c.org_name || `ID ${c.id}`,
     email: c.email_addresses?.[0]?.address ?? null,
     phone: c.phone_numbers?.[0]?.number ?? null,
     city: c.street_addresses?.[0]?.city ?? null,
     state: c.street_addresses?.[0]?.state ?? null,
   };
+}
+
+// /gifts/search (what recent_donors/lapsed_donors/top_donors aggregate over)
+// never includes a constituent name field, only constituent_id, so those
+// tools used to always fall back to "ID {id}". Batch-resolve real names from
+// /constituents/{id} for the result set instead. This is a bulk read used to
+// label an aggregate report, not a single-record detail view, so it
+// deliberately skips logAccessNote the same way list_*/search_* calls do.
+// Capped so a huge unique-donor set doesn't fan out unbounded; anything past
+// the cap keeps the "ID {id}" fallback.
+const NAME_RESOLVE_CAP = 100;
+async function resolveConstituentNames(ids) {
+  const names = {};
+  const capped = ids.slice(0, NAME_RESOLVE_CAP);
+  await Promise.all(
+    capped.map(async (id) => {
+      try {
+        const c = await lglRequest("GET", `/constituents/${id}`);
+        names[id] = summaryConstituent(c).name;
+      } catch {
+        names[id] = `ID ${id}`;
+      }
+    })
+  );
+  return names;
+}
+
+// /constituents/search doesn't take a bare full-text "q" value — it requires
+// each q[] entry to be a "field=value" expression against a fixed set of
+// field tokens (confirmed against LGL's API docs and live 400 responses: a
+// bare value like "q=smith" comes back "Unknown query parameter: smith").
+// name/eaddr/phone_number are the tokens for the three ways this server's
+// tools accept a free-text constituent query; route to whichever looks right.
+function constituentSearchExpr(query) {
+  const q = query.trim();
+  if (q.includes("@")) return `eaddr=${q}`;
+  if (/\d/.test(q) && /^[\d()+\-.\s]+$/.test(q)) return `phone_number=${q}`;
+  return `name=${q}`;
+}
+
+function constituentSearchParams(query, limit) {
+  const params = new URLSearchParams();
+  params.append("q[]", constituentSearchExpr(query));
+  params.append("limit", String(limit));
+  return params;
 }
 
 // Resolves a constituent_id from either a direct ID or a name to search for.
@@ -307,7 +352,7 @@ async function resolveConstituentId(args) {
   if (!args.name) {
     throw new Error("Provide either constituent_id or name.");
   }
-  const params = new URLSearchParams({ q: args.name, limit: "10" });
+  const params = constituentSearchParams(args.name, 10);
   const search = await lglRequest("GET", `/constituents/search?${params}`);
   const matches = (search.items ?? search) || [];
   if (!Array.isArray(matches) || matches.length === 0) {
@@ -320,6 +365,151 @@ async function resolveConstituentId(args) {
     );
   }
   return matches[0].id;
+}
+
+// ─── Reference Data Cache (for search_constituents_advanced) ────────────────
+// Friendly name -> LGL id/key resolution for custom attributes, groups,
+// lists, membership levels, and keywords. None of these change during a
+// session, so each reference type is fetched at most once per process
+// lifetime (mirrors the note-types cache above) rather than once per call.
+// A resolution miss triggers exactly one refetch-and-retry (the name may
+// have just been added in LGL's admin UI) before throwing with the available
+// names, so a stale cache never permanently hides a legitimately new entry.
+const _referenceCaches = {};
+
+async function fetchReferenceList(cacheKey, fetcher) {
+  if (!_referenceCaches[cacheKey]) {
+    _referenceCaches[cacheKey] = await fetcher();
+  }
+  return _referenceCaches[cacheKey];
+}
+
+async function resolveReferenceByName(cacheKey, fetcher, name, { nameField = "name", valueField = "id" } = {}) {
+  let list = await fetchReferenceList(cacheKey, fetcher);
+  let match = list.find((item) => item[nameField]?.toLowerCase() === name.toLowerCase());
+  if (!match) {
+    delete _referenceCaches[cacheKey];
+    list = await fetchReferenceList(cacheKey, fetcher);
+    match = list.find((item) => item[nameField]?.toLowerCase() === name.toLowerCase());
+  }
+  if (!match) {
+    const available = list.map((item) => item[nameField]).join(", ");
+    throw new Error(`No ${cacheKey.replace(/_/g, " ")} named "${name}". Available: ${available || "(none)"}`);
+  }
+  return match[valueField];
+}
+
+const fetchCustomAttributesList = () => lglRequest("GET", "/attributes").then((d) => d.items ?? d);
+const fetchGroupsList = () => lglRequest("GET", "/groups?limit=200").then((d) => d.items ?? d);
+const fetchListsList = () => lglRequest("GET", "/lists").then((d) => d.items ?? d);
+const fetchMembershipLevelsList = () => lglRequest("GET", "/membership_levels").then((d) => d.items ?? d);
+
+// /keywords has no flat "list all" endpoint, but GET /categories already
+// nests each category's keywords inline (confirmed live) — no need to fan
+// out to /categories/{id}/keywords per category. Just flatten what /categories
+// already returns.
+async function fetchKeywordsList() {
+  const categories = (await lglRequest("GET", "/categories?limit=200")).items ?? [];
+  return categories.flatMap((c) => c.keywords ?? []);
+}
+
+const resolveCustomAttributeKey = (name) =>
+  resolveReferenceByName("custom_attributes", fetchCustomAttributesList, name, { valueField: "key" });
+const resolveGroupId = (name) => resolveReferenceByName("groups", fetchGroupsList, name);
+const resolveListId = (name) => resolveReferenceByName("lists", fetchListsList, name);
+const resolveMembershipLevelId = (name) => resolveReferenceByName("membership_levels", fetchMembershipLevelsList, name);
+const resolveKeywordId = (name) => resolveReferenceByName("keywords", fetchKeywordsList, name);
+
+// Text custom-attribute operators -> LGL's op codes for q[]=custom_attr=key|op|value.
+const CUSTOM_ATTR_OPERATORS = {
+  contains: "ft",
+  not_contains: "nft",
+  equals: "eq",
+  not_equals: "ne",
+  starts_with: "sw",
+  blank: "bl",
+  not_blank: "nb",
+};
+
+// LGL requires updated_from/updated_to as YYYY-MM-DDTHH:MM:SSZ; accept a
+// plain YYYY-MM-DD from callers and normalize it rather than making them
+// guess at the full timestamp format.
+function normalizeToTimestamp(dateStr) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00Z` : dateStr;
+}
+
+// Builds the q[]/expand params for search_constituents_advanced. Every
+// provided filter becomes one q[] entry; LGL ANDs them all together
+// (confirmed live — there is no OR support in this endpoint).
+async function buildAdvancedSearchParams(args) {
+  const params = new URLSearchParams();
+  // custom_attrs is omitted from /constituents/search results unless
+  // explicitly expanded (confirmed live), so this is always requested.
+  params.append("expand", "custom_attrs");
+
+  const terms = [];
+
+  if (args.query) terms.push(constituentSearchExpr(args.query));
+
+  for (const filter of args.custom_attributes ?? []) {
+    const op = CUSTOM_ATTR_OPERATORS[filter.operator];
+    if (!op) {
+      throw new Error(`Unknown custom attribute operator "${filter.operator}". Valid operators: ${Object.keys(CUSTOM_ATTR_OPERATORS).join(", ")}`);
+    }
+    // The inputSchema's oneOf models these as two distinct shapes (blank/not_blank
+    // take no value; every other operator requires one), but the MCP SDK does not
+    // validate call arguments against inputSchema before invoking the handler, so
+    // this is enforced here too rather than trusting the caller followed the schema.
+    const isBlankCheck = filter.operator === "blank" || filter.operator === "not_blank";
+    if (isBlankCheck && filter.value !== undefined) {
+      throw new Error(`Operator "${filter.operator}" does not take a value — omit "value" for blank/not_blank checks.`);
+    }
+    if (!isBlankCheck && filter.value === undefined) {
+      throw new Error(`Operator "${filter.operator}" requires a "value".`);
+    }
+    const key = await resolveCustomAttributeKey(filter.name);
+    // bl/nb ignore the value but LGL 400s without a non-empty 3rd pipe
+    // segment (confirmed live), so a placeholder is sent when none is given.
+    const value = filter.value ?? "_";
+    terms.push(`custom_attr=${key}|${op}|${value}`);
+  }
+
+  if (args.keyword) terms.push(`keyword=${await resolveKeywordId(args.keyword)}`);
+  if (args.city) terms.push(`city=${args.city}`);
+  if (args.state) terms.push(`state=${args.state}`);
+  if (args.postal_code) terms.push(`postal_code=${args.postal_code}`);
+  if (args.country) terms.push(`country=${args.country}`);
+  if (args.constituent_type) terms.push(`constituent_type=${args.constituent_type === "organization" ? 1 : 0}`);
+  if (args.membership_status) terms.push(`membership_status=${args.membership_status === "active" ? 1 : 0}`);
+  if (args.membership_level_names?.length) {
+    const ids = await Promise.all(args.membership_level_names.map(resolveMembershipLevelId));
+    terms.push(`membership_level=${ids.join(",")}`);
+  }
+  if (args.membership_end_date_from) terms.push(`membership_end_date_from=${args.membership_end_date_from}`);
+  if (args.membership_end_date_to) terms.push(`membership_end_date_to=${args.membership_end_date_to}`);
+  if (args.updated_from) terms.push(`updated_from=${normalizeToTimestamp(args.updated_from)}`);
+  if (args.updated_to) terms.push(`updated_to=${normalizeToTimestamp(args.updated_to)}`);
+  if (args.group_names?.length) {
+    const ids = await Promise.all(args.group_names.map(resolveGroupId));
+    terms.push(`groups=${ids.join(",")}`);
+  }
+  if (args.list_names?.length) {
+    const ids = await Promise.all(args.list_names.map(resolveListId));
+    terms.push(`lists=${ids.join(",")}`);
+  }
+  if (args.external_id) terms.push(`external_id=${args.external_id}`);
+
+  for (const term of terms) params.append("q[]", term);
+  if (args.limit !== undefined) params.append("limit", String(args.limit));
+  if (args.offset !== undefined) params.append("offset", String(args.offset));
+  return params;
+}
+
+// Same shape as summaryConstituent plus the custom attribute values that
+// were actually fetched via expand=custom_attrs — kept separate from
+// summaryConstituent so existing tools' output is untouched.
+function summaryConstituentWithAttrs(c) {
+  return { ...summaryConstituent(c), custom_attrs: c.custom_attrs ?? [] };
 }
 
 // LGL's field names for amount/date are inconsistent across endpoints: the
@@ -361,6 +551,59 @@ const TOOLS = [
         limit: { type: "number", default: 20 },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "search_constituents_advanced",
+    description: "Server-side constituent search combining custom attribute filters (including blank/not-blank checks) with standard LGL filters (keyword, location, membership, groups, lists, updated date) and an optional free-text query. All provided filters AND together, matching LGL's actual q[] behavior — there is no OR support. Custom attributes, keywords, groups, lists, and membership levels are all referenced by their display name (not internal LGL IDs); names are resolved and cached for the life of this server process, so only the first call referencing a given name pays a lookup round-trip.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Optional free-text query, routed to name/email/phone like search_constituents" },
+        custom_attributes: {
+          type: "array",
+          description: "Filters on custom attributes, by their display name (e.g. 'Background Info'), not their internal key",
+          items: {
+            type: "object",
+            oneOf: [
+              {
+                properties: {
+                  name: { type: "string", description: "Custom attribute display name" },
+                  operator: { type: "string", enum: ["blank", "not_blank"] },
+                },
+                required: ["name", "operator"],
+                additionalProperties: false,
+              },
+              {
+                properties: {
+                  name: { type: "string", description: "Custom attribute display name" },
+                  operator: { type: "string", enum: ["contains", "not_contains", "equals", "not_equals", "starts_with"] },
+                  value: { type: "string" },
+                },
+                required: ["name", "operator", "value"],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+        keyword: { type: "string", description: "Keyword name (single keyword only — LGL's API does not support filtering by multiple keywords at once)" },
+        city: { type: "string" },
+        state: { type: "string", description: "2-letter state code" },
+        postal_code: { type: "string", description: "Matches left-most characters" },
+        country: { type: "string" },
+        constituent_type: { type: "string", enum: ["individual", "organization"] },
+        membership_status: { type: "string", enum: ["active", "lapsed"] },
+        membership_level_names: { type: "array", items: { type: "string" }, description: "Membership level display names" },
+        membership_end_date_from: { type: "string", description: "YYYY-MM-DD" },
+        membership_end_date_to: { type: "string", description: "YYYY-MM-DD" },
+        updated_from: { type: "string", description: "YYYY-MM-DD; constituents updated on/after this date" },
+        updated_to: { type: "string", description: "YYYY-MM-DD; constituents updated on/before this date" },
+        group_names: { type: "array", items: { type: "string" }, description: "Group display names" },
+        list_names: { type: "array", items: { type: "string" }, description: "List display names" },
+        external_id: { type: "string" },
+        limit: { type: "number", default: 20 },
+        offset: { type: "number", default: 0 },
+      },
     },
   },
   {
@@ -1777,9 +2020,15 @@ async function handleTool(name, args, authInfo) {
     // ── 1. Constituents & Core Management ────────────────────────────────────
 
     case "search_constituents": {
-      const params = new URLSearchParams({ q: args.query, limit: args.limit ?? 20 });
+      const params = constituentSearchParams(args.query, args.limit ?? 20);
       const data = await lglRequest("GET", `/constituents/search?${params}`);
       return toText((data.items ?? data).map(summaryConstituent));
+    }
+
+    case "search_constituents_advanced": {
+      const params = await buildAdvancedSearchParams({ limit: 20, offset: 0, ...args });
+      const data = await lglRequest("GET", `/constituents/search?${params}`);
+      return toText((data.items ?? data).map(summaryConstituentWithAttrs));
     }
 
     case "list_constituents": {
@@ -1795,11 +2044,16 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "create_constituent": {
+      // LGL's actual API fields are org_name and is_org (boolean) — there is
+      // no organization_name or constituent_type field. The tool keeps the
+      // friendlier organization_name/constituent_type inputs and translates
+      // them here, since sending the wrong keys gets silently ignored by the
+      // API (org name never gets set, is_org never gets flipped to true).
       const body = {
         first_name: args.first_name,
         last_name: args.last_name,
-        organization_name: args.organization_name,
-        constituent_type: args.constituent_type ?? "individual",
+        org_name: args.organization_name,
+        is_org: (args.constituent_type ?? "individual") === "organization",
       };
       if (args.email) body.email_addresses = [{ address: args.email, is_primary: true }];
       if (args.phone) body.phone_numbers = [{ number: args.phone, is_primary: true }];
@@ -1814,11 +2068,12 @@ async function handleTool(name, args, authInfo) {
 
     case "update_constituent": {
       const { id, ...rest } = args;
+      // See create_constituent: org_name/is_org are the real API fields.
       const body = {};
       if (rest.first_name !== undefined) body.first_name = rest.first_name;
       if (rest.last_name !== undefined) body.last_name = rest.last_name;
-      if (rest.organization_name !== undefined) body.organization_name = rest.organization_name;
-      if (rest.constituent_type !== undefined) body.constituent_type = rest.constituent_type;
+      if (rest.organization_name !== undefined) body.org_name = rest.organization_name;
+      if (rest.constituent_type !== undefined) body.is_org = rest.constituent_type === "organization";
       return toText(await lglRequest("PATCH", `/constituents/${id}`, body));
     }
 
@@ -2577,6 +2832,9 @@ async function handleTool(name, args, authInfo) {
         b.last_gift_date.localeCompare(a.last_gift_date)
       );
 
+      const recentNames = await resolveConstituentNames(donors.map((d) => d.constituent_id));
+      for (const d of donors) d.name = recentNames[d.constituent_id] ?? d.name;
+
       const result = { since: start_date, count: donors.length, donors };
       if (truncated) {
         result.truncated = true;
@@ -2620,6 +2878,9 @@ async function handleTool(name, args, authInfo) {
         }))
         .sort((a, b) => a.last_gift_date.localeCompare(b.last_gift_date));
 
+      const lapsedNames = await resolveConstituentNames(lapsed.map((d) => d.constituent_id));
+      for (const d of lapsed) d.name = lapsedNames[d.constituent_id] ?? d.name;
+
       const result = { cutoff: cutoffStr, months_lapsed: months, count: lapsed.length, lapsed_donors: lapsed };
       if (truncated) {
         result.truncated = true;
@@ -2656,6 +2917,9 @@ async function handleTool(name, args, authInfo) {
         .sort((a, b) => b.total_given - a.total_given)
         .slice(0, limit)
         .map((rec, i) => ({ rank: i + 1, ...rec }));
+
+      const topNames = await resolveConstituentNames(ranked.map((d) => d.constituent_id));
+      for (const d of ranked) d.name = topNames[d.constituent_id] ?? d.name;
 
       const result = { count: ranked.length, top_donors: ranked };
       if (args.start_date) result.start_date = args.start_date;
@@ -2828,7 +3092,8 @@ async function handleTool(name, args, authInfo) {
 //     automatic access-audit note), no Integration Queue submissions.
 //   - Assisted (LGL_READ_ONLY=true + LGL_ASSISTED_MODE=true): everything
 //     read-only allows, plus low-risk, easily-reviewed writes: the automatic
-//     access-audit notes, explicit create_note/update_note, and the
+//     access-audit notes, explicit create_note/update_note,
+//     create_contact_report/update_contact_report, and the
 //     submit_*_for_review Integration Queue tools (which only ever land in
 //     LGL's human-reviewed queue, never write a constituent record directly).
 //     Direct mutations to constituents/gifts/groups/etc. stay blocked.
@@ -2840,7 +3105,11 @@ const INTEGRATION_QUEUE_TOOLS = [
   "submit_constituent_for_review", "submit_gift_for_review", "submit_note_for_review",
   "submit_event_registration_for_review", "submit_appeal_request_for_review",
 ];
-const ASSISTED_TOOLS = [...INTEGRATION_QUEUE_TOOLS, "create_note", "update_note", "log_document_link"];
+const ASSISTED_TOOLS = [
+  ...INTEGRATION_QUEUE_TOOLS,
+  "create_note", "update_note", "log_document_link",
+  "create_contact_report", "update_contact_report",
+];
 
 function classifyTool(name) {
   if (name === "call_lgl_api") {
@@ -2885,7 +3154,7 @@ function assertWriteAllowed(name) {
   const tool = TOOLS.find((t) => t.name === name);
   if (isToolAllowed(tool?.annotations)) return;
   const assistedHint = tool?.annotations?.assistedWriteHint
-    ? `This tool only needs LGL_ASSISTED_MODE=true (human-reviewed notes/webhook writes) — it doesn't require disabling LGL_READ_ONLY entirely. `
+    ? `This tool only needs LGL_ASSISTED_MODE=true (human-reviewed notes/contact reports/webhook writes) — it doesn't require disabling LGL_READ_ONLY entirely. `
     : "";
   throw new Error(
     `LGL_READ_ONLY=true is set: tool "${name}" is disabled because it can modify data. ${assistedHint}` +

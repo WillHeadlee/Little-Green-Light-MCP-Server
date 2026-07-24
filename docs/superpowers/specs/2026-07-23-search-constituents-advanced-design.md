@@ -19,7 +19,7 @@ Verified live against the production API this session (not just documentation):
 - `key` in `custom_attr=<key>|...` is the attribute's `key` field from `GET /attributes` (e.g. `"background_info"`), **not** its `name` (`"Background Info"`) or `id`.
 - Numeric (`custom_attr_int`) and date (`custom_attr_from`/`custom_attr_to`) attribute filtering exist in LGL's docs but are **out of scope** for this tool per user decision — this account has no numeric/date custom attributes to verify against, and the immediate need is text attributes with blank/not-blank.
 - Standard field tokens confirmed from LGL's docs: `name`, `eaddr`, `phone_number`, `street`, `city`, `state`, `postal_code`, `country`, `keyword` (single ID, not comma-separated), `updated_from`/`updated_to` (`YYYY-MM-DDTHH:MM:SSZ`), `membership_status` (0=lapsed, 1=active), `membership_level` (comma-separated IDs), `membership_end_date_from`/`_to`, `external_id`, `constituent_type` (0=individual, 1=organization), `groups` (comma-separated IDs), `lists` (comma-separated IDs).
-- `/keywords` has no flat "list all" endpoint — keywords are nested under categories (`GET /categories/{id}/keywords`). Resolving a keyword by name requires fetching all categories, then all their keywords.
+- `/keywords` has no flat "list all" endpoint, but `GET /categories` already nests each category's keywords inline (confirmed live — every category in a 3-category test account returned a populated `keywords` array). Resolving a keyword by name is therefore one `GET /categories` call flattened, not a fan-out to `/categories/{id}/keywords` per category as originally assumed.
 - **`/constituents/search` results omit `custom_attrs` by default** — confirmed live: a search result item has none of the custom-attribute fields present on a single `GET /constituents/{id}` record. Adding `expand=custom_attrs` to the search request restores it (confirmed live: same query with `expand=custom_attrs` returns `"custom_attrs": []` on each item). The tool must always send `expand=custom_attrs` on its search call, not just on individual lookups.
 
 ## Tool interface
@@ -51,7 +51,7 @@ search_constituents_advanced({
 })
 ```
 
-`custom_attributes` items use JSON Schema `oneOf` with `additionalProperties: false` on each branch, so a caller cannot attach `value` to `blank`/`not_blank`, and cannot omit it from the other five operators — enforced by the schema itself, not a post-hoc check.
+`custom_attributes` items use JSON Schema `oneOf` with `additionalProperties: false` on each branch, so a well-behaved MCP client sees two distinct valid shapes rather than one shape plus a hidden rule. **Confirmed during implementation testing:** the `@modelcontextprotocol/sdk` server does not itself validate call arguments against `inputSchema` before invoking the handler — a client that ignores the schema can still send `{operator: "blank", value: "x"}`. The handler therefore also enforces the same two-shape constraint at runtime (unknown operator, blank/not_blank with a value, or a non-blank operator missing a value all throw a clear error) rather than relying on the schema alone.
 
 ## Name resolution and caching
 
@@ -88,7 +88,7 @@ Reference types and their fetchers:
 | `groups` | `GET /groups?limit=200` | nameField/valueField default (`name`/`id`) |
 | `lists` | `GET /lists` | default |
 | `membership_levels` | `GET /membership_levels` | default |
-| `keywords` | `GET /categories?limit=200` then `Promise.all` of `GET /categories/{id}/keywords`, flattened into one array | default; built once, cached as the merged result like any other entry |
+| `keywords` | `GET /categories?limit=200`, flatMap over each category's inline `keywords` array | default; single request, no fan-out needed |
 
 No TTL: the cache lives for the server process's lifetime, and a resolution miss triggers exactly one refetch-and-retry before erroring out. Net effect: the first call in a session that references a given name pays one lookup; every later call (same or different name of the same reference type) is a free in-memory `.find()`.
 
