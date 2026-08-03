@@ -228,12 +228,15 @@ function flattenSlots(items, map, baseKey, { maxSlots = 3, firstSlotBare = true 
   return out;
 }
 
-// Matching fields shared by every non-constituent submission tool, used by
-// LGL's "Match on email address and name" rule to find the right constituent.
+// Matching fields shared by every non-constituent submission tool. LGL's
+// Integration Queue matches submissions to an existing constituent using
+// record_id (LGL constituent ID) when provided; otherwise it falls back to
+// its "match on email address and name" rule.
 const MATCHING_PROPS = {
-  first_name: { type: "string", description: "Constituent's first name, for matching" },
-  last_name: { type: "string", description: "Constituent's last name, for matching" },
-  email: { type: "string", description: "Constituent's email, for matching" },
+  record_id: { type: "string", description: "LGL constituent ID, for matching — preferred over name/email when known" },
+  first_name: { type: "string", description: "Constituent's first name, for matching (fallback if record_id is omitted)" },
+  last_name: { type: "string", description: "Constituent's last name, for matching (fallback if record_id is omitted)" },
+  email: { type: "string", description: "Constituent's email, for matching (fallback if record_id is omitted)" },
 };
 
 // ─── Date Helpers (UTC) ──────────────────────────────────────────────────────
@@ -1889,15 +1892,16 @@ const TOOLS = [
   // listener (LGL Settings → Integrations). None write to LGL directly —
   // every submission lands in the Integration Queue for a human to approve,
   // so all five stay available even when LGL_READ_ONLY is set. Matching an
-  // existing constituent uses LGL's "match on email address and name" rule
-  // (LGL constituent ID as a match key is configured but not currently
-  // functioning on this integration — omit record_id).
+  // existing constituent prefers record_id (LGL constituent ID) when the
+  // integration's record-matching preference is set to ID-based; otherwise
+  // LGL falls back to its "match on email address and name" rule.
   {
     name: "submit_constituent_for_review",
-    description: "Submit a new or updated constituent to LGL's Integration Queue for human review: identity/name fields, up to 3 phone numbers, up to 3 emails, up to 2 mailing addresses, a website, constituent category fields, and a relationship. This does NOT write to LGL directly.",
+    description: "Submit a new or updated constituent to LGL's Integration Queue for human review: identity/name fields, up to 3 phone numbers, up to 3 emails, up to 2 mailing addresses, a website, constituent category fields, and a relationship. Provide record_id to match/update an existing constituent by LGL ID. This does NOT write to LGL directly.",
     inputSchema: {
       type: "object",
       properties: {
+        record_id: { type: "string", description: "LGL constituent ID, to match/update an existing constituent instead of creating a new one" },
         constituent_type: { type: "string", description: "'Individual' or 'Organization'" },
         prefix: { type: "string" }, first_name: { type: "string" }, middle_name: { type: "string" },
         last_name: { type: "string" }, suffix: { type: "string" }, maiden_name: { type: "string" },
@@ -1971,7 +1975,7 @@ const TOOLS = [
   },
   {
     name: "submit_gift_for_review",
-    description: "Submit a gift, pledge, or goal to LGL's Integration Queue for human review, including tribute (honor/memorial) details. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    description: "Submit a gift, pledge, or goal to LGL's Integration Queue for human review, including tribute (honor/memorial) details. Provide record_id (LGL constituent ID) to match the constituent this belongs to, or first_name/last_name/email as a fallback. This does NOT write to LGL directly.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2004,7 +2008,7 @@ const TOOLS = [
   },
   {
     name: "submit_note_for_review",
-    description: "Submit a note to LGL's Integration Queue for human review. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    description: "Submit a note to LGL's Integration Queue for human review. Provide record_id (LGL constituent ID) to match the constituent this belongs to, or first_name/last_name/email as a fallback. This does NOT write to LGL directly.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2019,7 +2023,7 @@ const TOOLS = [
   },
   {
     name: "submit_event_registration_for_review",
-    description: "Submit an event registration/invitation to LGL's Integration Queue for human review. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    description: "Submit an event registration/invitation to LGL's Integration Queue for human review. Provide record_id (LGL constituent ID) to match the constituent this belongs to, or first_name/last_name/email as a fallback. This does NOT write to LGL directly.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2040,7 +2044,7 @@ const TOOLS = [
   },
   {
     name: "submit_appeal_request_for_review",
-    description: "Submit an appeal request/status to LGL's Integration Queue for human review. Provide first_name/last_name/email to match the constituent this belongs to. This does NOT write to LGL directly.",
+    description: "Submit an appeal request/status to LGL's Integration Queue for human review. Provide record_id (LGL constituent ID) to match the constituent this belongs to, or first_name/last_name/email as a fallback. This does NOT write to LGL directly.",
     inputSchema: {
       type: "object",
       properties: {
