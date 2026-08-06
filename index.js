@@ -560,6 +560,43 @@ function giftDate(g) {
 // like a plain completed cash gift regardless of actual type. Verified
 // against real records (id 897339 Pledge / 897364 Installment child of it).
 const GIFT_TYPE_FIELDS = ["gift_category_name", "parent_gift_id"];
+
+// A Pledge gift record represents the ask/commitment, not cash received —
+// its actual payments are separate Installment records whose parent_gift_id
+// points back to it (confirmed live: a $500k pledge plus its 5 $100k
+// installments would double the reported total if summed together). Soft
+// Credit exists for attribution, not this constituent's own hard-dollar
+// giving, so it's excluded for the same reason. Other gift types (Gift, In
+// Kind, Other Income, Installment, Matching) represent real dollars given.
+const NON_CASH_GIFT_TYPES = new Set(["Pledge", "Soft Credit"]);
+function isCashGift(g) {
+  return !NON_CASH_GIFT_TYPES.has(g.gift_type_name ?? g.gift_type);
+}
+
+// Shared by list_gifts/get_donor_context/export_constituent_profile. The
+// nested /constituents/{id}/gifts list omits gift_date/received_date and the
+// GIFT_TYPE_FIELDS entirely for at least some records (confirmed live), so
+// this backfills them with a per-record follow-up call. Capped so a donor
+// with a very large gift history doesn't fan out unbounded — callers past
+// the cap keep the abbreviated (possibly missing) fields.
+async function backfillGiftFields(items) {
+  const needsBackfill = (g) => giftDate(g) === null || GIFT_TYPE_FIELDS.some((k) => g[k] === undefined);
+  if (items.length > 50 || !items.some(needsBackfill)) return items;
+  return Promise.all(
+    items.map(async (g) => {
+      if (!needsBackfill(g)) return g;
+      try {
+        const full = await lglRequest("GET", `/gifts/${g.id}`);
+        const patch = { received_date: full.received_date };
+        for (const k of GIFT_TYPE_FIELDS) patch[k] = full[k];
+        return { ...g, ...patch };
+      } catch {
+        return g;
+      }
+    })
+  );
+}
+
 function summaryGift(g) {
   const summary = {
     id: g.id,
@@ -2310,30 +2347,7 @@ async function handleTool(name, args, authInfo) {
         if (args.end_date) params.set("end_date", args.end_date);
         const data = await lglRequest("GET", `/constituents/${args.constituent_id}/gifts?${params}`);
         let items = data.items ?? data;
-
-        // The nested gifts list is an abbreviated representation that omits
-        // gift_date/received_date and the GIFT_TYPE_FIELDS entirely for at
-        // least some records (confirmed live: Installments always lack
-        // date; a Pledge lacked gift_category_name/parent_gift_id even with
-        // date present) — unlike GET /gifts/{id}. Backfill per-record;
-        // capped so a donor with a very large gift history doesn't fan out
-        // unbounded.
-        const needsBackfill = (g) => giftDate(g) === null || GIFT_TYPE_FIELDS.some((k) => g[k] === undefined);
-        if (items.length <= 50 && items.some(needsBackfill)) {
-          items = await Promise.all(
-            items.map(async (g) => {
-              if (!needsBackfill(g)) return g;
-              try {
-                const full = await lglRequest("GET", `/gifts/${g.id}`);
-                const patch = { received_date: full.received_date };
-                for (const k of GIFT_TYPE_FIELDS) patch[k] = full[k];
-                return { ...g, ...patch };
-              } catch {
-                return g;
-              }
-            })
-          );
-        }
+        items = await backfillGiftFields(items);
 
         return toText(filterByDate(items).map(summaryGift));
       } else {
@@ -2912,6 +2926,7 @@ async function handleTool(name, args, authInfo) {
 
       const byConstituent = {};
       for (const g of gifts) {
+        if (!isCashGift(g)) continue;
         const d = giftDate(g);
         if (!d || d < start_date) continue;
         const cid = g.constituent_id;
@@ -2961,6 +2976,7 @@ async function handleTool(name, args, authInfo) {
       const latest = {};
       const totals = {};
       for (const g of gifts) {
+        if (!isCashGift(g)) continue;
         const d = giftDate(g);
         if (!d) continue;
         const cid = g.constituent_id;
@@ -3004,6 +3020,7 @@ async function handleTool(name, args, authInfo) {
 
       const agg = {};
       for (const g of gifts) {
+        if (!isCashGift(g)) continue;
         const d = giftDate(g);
         if (args.start_date && (!d || d < args.start_date)) continue;
         if (args.end_date && (!d || d > args.end_date)) continue;
@@ -3069,10 +3086,14 @@ async function handleTool(name, args, authInfo) {
         logAccessNote(id, "get_donor_context"),
       ]);
 
+      const recentGifts = giftsData._error
+        ? { error: giftsData._error }
+        : (await backfillGiftFields(giftsData.items ?? giftsData)).map(summaryGift);
+
       return toText({
         constituent: summaryConstituent(constituent),
         full_record: constituent,
-        recent_gifts: giftsData._error ? { error: giftsData._error } : (giftsData.items ?? giftsData).map(summaryGift),
+        recent_gifts: recentGifts,
         group_memberships: groupsData._error ? { error: groupsData._error } : (groupsData.items ?? groupsData),
         recent_notes: notesData._error ? { error: notesData._error } : (notesData.items ?? notesData),
       });
@@ -3113,10 +3134,13 @@ async function handleTool(name, args, authInfo) {
       ]);
 
       const giftsUnwrapped = unwrap(giftsData);
+      const gifts = Array.isArray(giftsUnwrapped)
+        ? (await backfillGiftFields(giftsUnwrapped)).map(summaryGift)
+        : giftsUnwrapped;
       return toText({
         constituent: summaryConstituent(constituent),
         full_record: constituent,
-        gifts: Array.isArray(giftsUnwrapped) ? giftsUnwrapped.map(summaryGift) : giftsUnwrapped,
+        gifts,
         group_memberships: unwrap(groupsData),
         notes: unwrap(notesData),
         relationships: unwrap(relationshipsData),
