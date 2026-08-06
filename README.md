@@ -8,7 +8,7 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 
 - **Constituents & Core Management:** Search, retrieve, create, update, and delete constituent records.
 - **Advanced Server-Side Search:** `search_constituents_advanced` filters constituents directly through LGL's own query engine — custom attributes (contains/equals/starts-with/blank/not-blank), keyword, location, membership status/level, groups, lists, and updated date — all AND'd together and referenced by friendly display name rather than internal LGL IDs. Attribute values are only included in results when explicitly requested (`include_custom_attrs`), keeping ordinary filtered lookups lightweight. `constituents_never_touched_attribute` finds records that have never had a given custom attribute set at all — a state LGL's own blank/not-blank operators can't distinguish from "set but empty."
-- **Fundraising & Gifts:** Record new gifts, list transactions (with date-range filters), search payments, and view campaigns, funds, appeals, and events.
+- **Fundraising & Gifts:** Record new gifts, list transactions (with date-range filters), search payments, and view campaigns, funds, appeals, and events. `list_gifts`/`get_gift` surface each record's gift type and pledge/installment linkage — see [Gift Types & Pledge Linkage](#gift-types--pledge-linkage) below.
 - **Contact Sub-Resources:** Fully manage street addresses, phone numbers, email addresses, and web addresses for constituents.
 - **Activities & Notes:** Log notes, write contact reports, and track volunteer hours.
 - **Groups & Memberships:** Organize constituents into customizable groups and membership levels.
@@ -95,7 +95,7 @@ Separate from the direct LGL API, LGL also has a **custom integration webhook** 
 | Tool | Covers |
 |---|---|
 | `submit_constituent_for_review` | Identity/name fields, up to 3 phone numbers, up to 3 emails, up to 2 mailing addresses, a website, constituent category fields, and a relationship |
-| `submit_gift_for_review` | Gift, pledge, and goal fields, plus tribute (honor/memorial) details |
+| `submit_gift_for_review` | Gift, pledge, and goal fields, plus tribute (honor/memorial) details. `gift_type` is constrained to LGL's actual gift types (see [Gift Types & Pledge Linkage](#gift-types--pledge-linkage)) |
 | `submit_note_for_review` | Notes |
 | `submit_event_registration_for_review` | Event registrations/invitations |
 | `submit_appeal_request_for_review` | Appeal requests |
@@ -109,6 +109,16 @@ None of these five write to LGL directly — every submission lands in **Setting
 4. Because there's no LGL account whose mapping is identical out of the box, treat the field names above as a starting point and confirm against your own mapping screen before relying on a given tool.
 
 **Matching an existing constituent:** all five tools accept an optional `record_id` field carrying the LGL constituent ID. This is the preferred match key, but it only works if the integration's *record-matching preference* (in that integration's settings, alongside its field mapping) is set to ID-based matching — with the default email/name-based preference, an "LGL constituent ID" field mapping does not persist matches. If `record_id` is omitted, or your integration is still on email/name-based matching, LGL falls back to matching on `first_name` + `last_name` + `email`.
+
+---
+
+## Gift Types & Pledge Linkage
+
+In LGL, pledges, matching gifts, and installment payments are not separate object types — they're all `Gift` records distinguished by a `gift_type_name`/`gift_category_name` pair, with payments linked back to what they pay against via `parent_gift_id`. Left as raw API output, this is easy to misread (an installment payment looks like an unrelated small gift unless you know it has a `parent_gift_id` pointing at a pledge). This server surfaces that distinction explicitly:
+
+- **`list_gifts`** and **`get_gift`** both include a `type` field (from `gift_type_name`), plus `gift_category_name` and `parent_gift_id` when LGL provides them. `get_gift` also hoists `type` to the top of the response instead of leaving it buried among dozens of fields.
+- LGL's nested `/constituents/{id}/gifts` list endpoint omits these fields for some records; when that happens, `list_gifts` backfills them with a per-record follow-up call (capped at 50 records per request).
+- **`submit_gift_for_review`**'s `gift_type` field is constrained to LGL's actual gift types: `Gift`, `In Kind`, `Pledge`, `Other Income`, `In Honor of`, `In Memory of`, `Soft Credit`, `Matching`, `Installment` (from `list_gift_types`). An installment's payments should reference the pledge's gift ID so LGL links them together correctly.
 
 ---
 
