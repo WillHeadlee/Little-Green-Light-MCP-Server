@@ -112,6 +112,14 @@ None of these five write to LGL directly — every submission lands in **Setting
 
 ---
 
+## Schema Value Constraints
+
+Several `submit_*_for_review` fields represent a fixed, closed set of values defined by LGL itself, so their tool schemas use a real JSON Schema `enum` rather than a free-text field with a prose description — an AI client is constrained to a valid value instead of guessing: `constituent_type`, `deceased`, `gives_anonymously` (`submit_constituent_for_review`); `payment_interval`, `gift_is_anonymous`, `auto_generate_installments`, and `gift_type` (`submit_gift_for_review`, see [Gift Types & Pledge Linkage](#gift-types--pledge-linkage) below); `attended`, `rsvp_status`, `is_guest` (`submit_event_registration_for_review`); `appeal_status` (`submit_appeal_request_for_review`).
+
+By contrast, `address_type`, `phone_type`, `email_type`, `web_address_type`, `contact_type`, and `relationship_type` are genuinely **account-customizable** value lists in LGL, not fixed platform enums — confirmed live against this account, whose actual values (e.g. contact types of `Call`/`Meeting`/`Mailing`/`Proposal`/`Tour`) don't match generic examples. These stay free-text, but their descriptions point at `list_type_values` (with the matching `type` key: `street_address_types`, `phone_number_types`, `email_address_types`, `web_address_types`, `contact_report_types`) or `list_relationship_types` to discover the real values for your account before submitting.
+
+---
+
 ## Gift Types & Pledge Linkage
 
 In LGL, pledges, matching gifts, and installment payments are not separate object types — they're all `Gift` records distinguished by a `gift_type_name`/`gift_category_name` pair, with payments linked back to what they pay against via `parent_gift_id`. Left as raw API output, this is easy to misread (an installment payment looks like an unrelated small gift unless you know it has a `parent_gift_id` pointing at a pledge). This server surfaces that distinction explicitly:
