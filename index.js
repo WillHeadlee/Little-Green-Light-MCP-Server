@@ -573,6 +573,42 @@ function isCashGift(g) {
   return !NON_CASH_GIFT_TYPES.has(g.gift_type_name ?? g.gift_type);
 }
 
+// Safety net for recent_donors/lapsed_donors/top_donors: isCashGift defaults
+// an unknown type to "cash" (undefined isn't in NON_CASH_GIFT_TYPES), so if
+// /gifts/search ever omits gift_type_name the way the nested
+// /constituents/{id}/gifts list is confirmed to omit gift_category_name/
+// parent_gift_id, a Pledge could silently get summed as cash again — the
+// exact bug already fixed. Not confirmed to happen on /gifts/search as of
+// this writing, but unverified, so backfill any record missing a type
+// before filtering. Capped so a huge account doesn't fan out unbounded;
+// records past the cap (or that fail to resolve) are excluded from totals
+// rather than assumed cash, since undercounting is safer than the
+// double-counting bug this exists to prevent.
+const UNKNOWN_GIFT_TYPE_BACKFILL_CAP = 50;
+async function resolveUnknownGiftTypes(gifts) {
+  const hasType = (g) => g.gift_type_name !== undefined || g.gift_type !== undefined;
+  const missing = gifts.filter((g) => !hasType(g));
+  if (missing.length === 0) return gifts;
+
+  const resolvedTypes = new Map();
+  await Promise.all(
+    missing.slice(0, UNKNOWN_GIFT_TYPE_BACKFILL_CAP).map(async (g) => {
+      try {
+        const full = await lglRequest("GET", `/gifts/${g.id}`);
+        resolvedTypes.set(g.id, full.gift_type_name ?? full.gift_type ?? null);
+      } catch {
+        // Leave unresolved; excluded below.
+      }
+    })
+  );
+
+  return gifts.flatMap((g) => {
+    if (hasType(g)) return [g];
+    const type = resolvedTypes.get(g.id);
+    return type ? [{ ...g, gift_type_name: type }] : [];
+  });
+}
+
 // Shared by list_gifts/get_donor_context/export_constituent_profile. The
 // nested /constituents/{id}/gifts list omits gift_date/received_date and the
 // GIFT_TYPE_FIELDS entirely for at least some records (confirmed live), so
@@ -2922,7 +2958,8 @@ async function handleTool(name, args, authInfo) {
       // server-side, so the cutoff is enforced client-side below.
       const days = args.days ?? 30;
       const start_date = utcDateNDaysAgo(days);
-      const { gifts, truncated } = await paginateGifts({ start_date });
+      let { gifts, truncated } = await paginateGifts({ start_date });
+      gifts = await resolveUnknownGiftTypes(gifts);
 
       const byConstituent = {};
       for (const g of gifts) {
@@ -2972,7 +3009,8 @@ async function handleTool(name, args, authInfo) {
       const months = args.months_lapsed ?? 12;
       const cutoffStr = utcDateNMonthsAgo(months);
 
-      const { gifts, truncated } = await paginateGifts({});
+      let { gifts, truncated } = await paginateGifts({});
+      gifts = await resolveUnknownGiftTypes(gifts);
       const latest = {};
       const totals = {};
       for (const g of gifts) {
@@ -3016,7 +3054,8 @@ async function handleTool(name, args, authInfo) {
       if (args.start_date) baseQuery.start_date = args.start_date;
       if (args.end_date) baseQuery.end_date = args.end_date;
 
-      const { gifts, truncated } = await paginateGifts(baseQuery);
+      let { gifts, truncated } = await paginateGifts(baseQuery);
+      gifts = await resolveUnknownGiftTypes(gifts);
 
       const agg = {};
       for (const g of gifts) {
