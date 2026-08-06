@@ -3051,10 +3051,16 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "constituents_missing_info": {
+      // Previously a single un-paginated /constituents?limit=500 call, which
+      // silently scanned only the first 500 constituents with no signal that
+      // anything was skipped — confirmed live this account has 2,000+, so
+      // the majority of the donor base was invisible to this report. Walk
+      // the full dataset via paginateConstituentSearch (same pattern as
+      // constituents_never_touched_attribute) and surface truncation if the
+      // account is large enough to hit that helper's own page cap.
       const limit = args.limit ?? 50;
-      const data = await lglRequest("GET", "/constituents?limit=500");
-      const all = data.items ?? data;
       const missing_fields = args.missing;
+      const { items: all, truncated } = await paginateConstituentSearch(new URLSearchParams());
       const results = [];
 
       for (const c of all) {
@@ -3063,10 +3069,14 @@ async function handleTool(name, args, authInfo) {
         if (missing_fields.includes("phone") && !(c.phone_numbers?.length)) absent.push("phone");
         if (missing_fields.includes("address") && !(c.street_addresses?.length)) absent.push("address");
         if (absent.length > 0) results.push({ ...summaryConstituent(c), missing_fields: absent });
-        if (results.length >= limit) break;
       }
 
-      return toText(results);
+      const result = { count: results.length, constituents: results.slice(0, limit) };
+      if (truncated) {
+        result.truncated = true;
+        result.note = "Underlying constituent scan hit the page cap (5000 records) — count and results may be incomplete for very large accounts.";
+      }
+      return toText(result);
     }
 
     case "get_donor_context": {
