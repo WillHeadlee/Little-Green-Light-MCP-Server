@@ -553,11 +553,19 @@ function giftDate(g) {
   return g.gift_date ?? g.received_date ?? null;
 }
 
+// Pledges, matching gifts, and installments are all just Gift records in LGL,
+// distinguished only by gift_type_name/gift_category_name plus parent_gift_id
+// (an Installment or payment's link back to the Pledge/Matching gift it pays
+// against) — the previous summary omitted all of these, so every gift looked
+// like a plain completed cash gift regardless of actual type. Verified
+// against real records (id 897339 Pledge / 897364 Installment child of it).
+const GIFT_TYPE_FIELDS = ["gift_category_name", "parent_gift_id"];
 function summaryGift(g) {
-  return {
+  const summary = {
     id: g.id,
     constituent_id: g.constituent_id,
     constituent_name: g.constituent_name ?? null,
+    type: g.gift_type_name ?? g.gift_type ?? "Gift",
     date: giftDate(g),
     amount: giftAmount(g),
     campaign: g.campaign_name ?? null,
@@ -565,6 +573,10 @@ function summaryGift(g) {
     payment_type: g.payment_type_name ?? null,
     note: g.note ?? null,
   };
+  for (const key of GIFT_TYPE_FIELDS) {
+    if (g[key] !== undefined) summary[key] = g[key];
+  }
+  return summary;
 }
 
 // ─── Tool Definitions ────────────────────────────────────────────────────────
@@ -1980,7 +1992,11 @@ const TOOLS = [
       type: "object",
       properties: {
         ...MATCHING_PROPS,
-        gift_type: { type: "string", description: "Gift, In Kind, Pledge, Other Income, In Honor of, In Memory of, Soft Credit, Matching, Installment" },
+        gift_type: {
+          type: "string",
+          enum: ["Gift", "In Kind", "Pledge", "Other Income", "In Honor of", "In Memory of", "Soft Credit", "Matching", "Installment"],
+          description: "In LGL, pledges and matching gifts are Gift records distinguished only by this field — not separate object types. A pledge's payments are separate Installment records linked back via parent_gift_id.",
+        },
         gift_amount: { type: "number" }, gift_date: { type: "string", description: "YYYY-MM-DD" },
         campaign_name: { type: "string" }, fund_name: { type: "string" },
         gift_appeal_name: { type: "string" }, gift_event_name: { type: "string" },
@@ -2296,16 +2312,22 @@ async function handleTool(name, args, authInfo) {
         let items = data.items ?? data;
 
         // The nested gifts list is an abbreviated representation that omits
-        // gift_date/received_date entirely (unlike GET /gifts/{id}), so date
-        // is always missing here otherwise. Backfill per-record; capped so a
-        // donor with a very large gift history doesn't fan out unbounded.
-        if (items.length <= 50 && items.some((g) => giftDate(g) === null)) {
+        // gift_date/received_date and the GIFT_TYPE_FIELDS entirely for at
+        // least some records (confirmed live: Installments always lack
+        // date; a Pledge lacked gift_category_name/parent_gift_id even with
+        // date present) — unlike GET /gifts/{id}. Backfill per-record;
+        // capped so a donor with a very large gift history doesn't fan out
+        // unbounded.
+        const needsBackfill = (g) => giftDate(g) === null || GIFT_TYPE_FIELDS.some((k) => g[k] === undefined);
+        if (items.length <= 50 && items.some(needsBackfill)) {
           items = await Promise.all(
             items.map(async (g) => {
-              if (giftDate(g) !== null) return g;
+              if (!needsBackfill(g)) return g;
               try {
                 const full = await lglRequest("GET", `/gifts/${g.id}`);
-                return { ...g, received_date: full.received_date };
+                const patch = { received_date: full.received_date };
+                for (const k of GIFT_TYPE_FIELDS) patch[k] = full[k];
+                return { ...g, ...patch };
               } catch {
                 return g;
               }
@@ -2325,7 +2347,11 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "get_gift": {
-      return toText(await lglRequest("GET", `/gifts/${args.id}`));
+      const data = await lglRequest("GET", `/gifts/${args.id}`);
+      // gift_type_name is otherwise buried among dozens of fields in the raw
+      // record; surface it first so pledges/matching gifts/installments are
+      // obvious at a glance instead of looking like a plain cash gift.
+      return toText({ type: data.gift_type_name ?? data.gift_type ?? "Gift", ...data });
     }
 
     case "record_gift": {
