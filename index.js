@@ -299,6 +299,19 @@ async function paginateConstituentSearch(baseQuery, { pageSize = 200, maxPages =
   return { items: all, truncated: true };
 }
 
+// Bounds concurrent write fan-out (e.g. create_group_with_members), unlike
+// an unbatched Promise.all which would fire one request per ID all at once
+// for however many IDs are passed in.
+const WRITE_FANOUT_BATCH_SIZE = 20;
+async function mapWithConcurrencyCap(items, fn, batchSize = WRITE_FANOUT_BATCH_SIZE) {
+  const results = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    results.push(...(await Promise.all(batch.map(fn))));
+  }
+  return results;
+}
+
 // ─── Formatting Helpers ──────────────────────────────────────────────────────
 
 function toText(value) {
@@ -1038,6 +1051,12 @@ const TOOLS = [
         constituent_id: { type: "number", description: "Target constituent" },
         amount: { type: "number", description: "Gift amount in USD" },
         gift_date: { type: "string", description: "YYYY-MM-DD" },
+        gift_type: {
+          type: "string",
+          enum: ["Gift", "In Kind", "Pledge", "Other Income", "In Honor of", "In Memory of", "Soft Credit", "Matching", "Installment"],
+          description: "Defaults to plain 'Gift' if omitted. Use 'Pledge' for a commitment and 'Installment' for a payment against one — an Installment's parent_gift_id should reference the Pledge's gift ID, or aggregate reports will double-count it (see README: Gift Types & Pledge Linkage).",
+        },
+        parent_gift_id: { type: "number", description: "For an Installment payment, the gift ID of the Pledge it pays against" },
         payment_type: { type: "string", description: "e.g. Cash, Check, Credit Card" },
         campaign_name: { type: "string" },
         fund_name: { type: "string" },
@@ -1057,6 +1076,11 @@ const TOOLS = [
         id: { type: "number", description: "Gift ID" },
         amount: { type: "number" },
         gift_date: { type: "string", description: "YYYY-MM-DD" },
+        gift_type: {
+          type: "string",
+          enum: ["Gift", "In Kind", "Pledge", "Other Income", "In Honor of", "In Memory of", "Soft Credit", "Matching", "Installment"],
+        },
+        parent_gift_id: { type: "number", description: "For an Installment payment, the gift ID of the Pledge it pays against" },
         payment_type: { type: "string" },
         campaign_name: { type: "string" },
         fund_name: { type: "string" },
@@ -2409,6 +2433,8 @@ async function handleTool(name, args, authInfo) {
         amount: args.amount,
         gift_date: args.gift_date,
       };
+      if (args.gift_type) body.gift_type_name = args.gift_type;
+      if (args.parent_gift_id) body.parent_gift_id = args.parent_gift_id;
       if (args.payment_type) body.payment_type_name = args.payment_type;
       if (args.campaign_name) body.campaign_name = args.campaign_name;
       if (args.fund_name) body.fund_name = args.fund_name;
@@ -2423,6 +2449,8 @@ async function handleTool(name, args, authInfo) {
       const body = {};
       if (rest.amount !== undefined) body.amount = rest.amount;
       if (rest.gift_date !== undefined) body.gift_date = rest.gift_date;
+      if (rest.gift_type !== undefined) body.gift_type_name = rest.gift_type;
+      if (rest.parent_gift_id !== undefined) body.parent_gift_id = rest.parent_gift_id;
       if (rest.payment_type !== undefined) body.payment_type_name = rest.payment_type;
       if (rest.campaign_name !== undefined) body.campaign_name = rest.campaign_name;
       if (rest.fund_name !== undefined) body.fund_name = rest.fund_name;
@@ -2765,16 +2793,14 @@ async function handleTool(name, args, authInfo) {
     }
     case "create_group_with_members": {
       const group = await lglRequest("POST", "/groups", { name: args.group_name });
-      const results = await Promise.all(
-        (args.constituent_ids ?? []).map(async (constituentId) => {
-          try {
-            await lglRequest("POST", `/constituents/${constituentId}/group_memberships`, { group_id: group.id });
-            return { constituent_id: constituentId, success: true };
-          } catch (err) {
-            return { constituent_id: constituentId, success: false, error: err.message };
-          }
-        })
-      );
+      const results = await mapWithConcurrencyCap(args.constituent_ids ?? [], async (constituentId) => {
+        try {
+          await lglRequest("POST", `/constituents/${constituentId}/group_memberships`, { group_id: group.id });
+          return { constituent_id: constituentId, success: true };
+        } catch (err) {
+          return { constituent_id: constituentId, success: false, error: err.message };
+        }
+      });
       return toText({ group: { id: group.id, name: group.name }, members: results });
     }
 
