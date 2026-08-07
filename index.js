@@ -299,6 +299,26 @@ async function paginateConstituentSearch(baseQuery, { pageSize = 200, maxPages =
   return { items: all, truncated: true };
 }
 
+// Generic pagination for the account-wide list_* endpoints (campaigns,
+// funds, events, appeals, groups, categories) plus internal reference-list
+// fetchers (fetchGroupsList/fetchKeywordsList), which all previously made a
+// single call at a hardcoded limit=200 with no signal that anything beyond
+// it was silently dropped.
+async function paginateList(path, { pageSize = 200, maxPages = 25 } = {}) {
+  const all = [];
+  let offset = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
+    const data = await lglRequest("GET", `${path}?${params}`);
+    const items = data.items ?? data;
+    if (!Array.isArray(items) || items.length === 0) return { items: all, truncated: false };
+    all.push(...items);
+    if (items.length < pageSize) return { items: all, truncated: false };
+    offset += pageSize;
+  }
+  return { items: all, truncated: true };
+}
+
 // Bounds concurrent write fan-out (e.g. create_group_with_members), unlike
 // an unbatched Promise.all which would fire one request per ID all at once
 // for however many IDs are passed in.
@@ -320,6 +340,20 @@ function toText(value) {
 
 function toError(err) {
   return { content: [{ type: "text", text: err.message }], isError: true };
+}
+
+// Best-effort truncation hint for single-page endpoints that expose a
+// caller-controlled limit but no total count: if the page came back exactly
+// full, there may be more matching records beyond it. Not a guarantee (the
+// true count could just happen to equal the limit) — just a nudge to raise
+// limit or narrow the query rather than treating the page as complete.
+function withTruncationHint(items, limit) {
+  if (!Array.isArray(items) || items.length !== limit) return items;
+  return {
+    count: items.length,
+    results: items,
+    note: "Result set exactly filled the requested limit — there may be more matching records; raise `limit` or narrow the query to confirm.",
+  };
 }
 
 function summaryConstituent(c) {
@@ -350,8 +384,13 @@ async function resolveConstituentNames(ids) {
       try {
         const c = await lglRequest("GET", `/constituents/${id}`);
         names[id] = summaryConstituent(c).name;
-      } catch {
-        names[id] = `ID ${id}`;
+      } catch (err) {
+        // Only a genuine 404 means "this constituent doesn't exist" — any
+        // other failure (rate limit, network, auth) is transient and
+        // shouldn't be indistinguishable from a real not-found in the output.
+        names[id] = err.message.startsWith("Record or path not found")
+          ? `ID ${id}`
+          : `ID ${id} (name lookup failed: ${err.message})`;
       }
     })
   );
@@ -436,17 +475,17 @@ async function resolveReferenceByName(cacheKey, fetcher, name, { nameField = "na
   return match[valueField];
 }
 
-const fetchCustomAttributesList = () => lglRequest("GET", "/attributes").then((d) => d.items ?? d);
-const fetchGroupsList = () => lglRequest("GET", "/groups?limit=200").then((d) => d.items ?? d);
-const fetchListsList = () => lglRequest("GET", "/lists").then((d) => d.items ?? d);
-const fetchMembershipLevelsList = () => lglRequest("GET", "/membership_levels").then((d) => d.items ?? d);
+const fetchCustomAttributesList = () => paginateList("/attributes").then((r) => r.items);
+const fetchGroupsList = () => paginateList("/groups").then((r) => r.items);
+const fetchListsList = () => paginateList("/lists").then((r) => r.items);
+const fetchMembershipLevelsList = () => paginateList("/membership_levels").then((r) => r.items);
 
 // /keywords has no flat "list all" endpoint, but GET /categories already
 // nests each category's keywords inline (confirmed live) — no need to fan
 // out to /categories/{id}/keywords per category. Just flatten what /categories
 // already returns.
 async function fetchKeywordsList() {
-  const categories = (await lglRequest("GET", "/categories?limit=200")).items ?? [];
+  const categories = (await paginateList("/categories")).items;
   return categories.flatMap((c) => c.keywords ?? []);
 }
 
@@ -1358,6 +1397,7 @@ const TOOLS = [
       type: "object",
       properties: {
         query: { type: "string", description: "Search query" },
+        limit: { type: "number", default: 50 },
       },
       required: ["query"],
     },
@@ -1420,7 +1460,10 @@ const TOOLS = [
     description: "Search for volunteer times",
     inputSchema: {
       type: "object",
-      properties: { query: { type: "string", description: "Search query" } },
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", default: 50 },
+      },
       required: ["query"],
     },
   },
@@ -2233,6 +2276,13 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "create_constituent": {
+      // The schema has no `required` array (an individual needs first/last
+      // name, an organization needs organization_name — JSON Schema can't
+      // express that either/or cleanly), so without this check a fully
+      // blank constituent could otherwise be created silently.
+      if (!args.organization_name && !args.first_name && !args.last_name) {
+        throw new Error("create_constituent requires organization_name, or at least one of first_name/last_name.");
+      }
       // LGL's actual API fields are org_name and is_org (boolean) — there is
       // no organization_name or constituent_type field. The tool keeps the
       // friendlier organization_name/constituent_type inputs and translates
@@ -2465,8 +2515,8 @@ async function handleTool(name, args, authInfo) {
 
     // Campaigns, Funds, Events handlers:
     case "list_campaigns": {
-      const data = await lglRequest("GET", "/campaigns?limit=200");
-      return toText(data.items ?? data);
+      const { items, truncated } = await paginateList("/campaigns");
+      return toText(truncated ? { count: items.length, campaigns: items, truncated: true } : items);
     }
     case "create_campaign": {
       return toText(await lglRequest("POST", "/campaigns", { name: args.name, description: args.description }));
@@ -2483,8 +2533,8 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "list_funds": {
-      const data = await lglRequest("GET", "/funds?limit=200");
-      return toText(data.items ?? data);
+      const { items, truncated } = await paginateList("/funds");
+      return toText(truncated ? { count: items.length, funds: items, truncated: true } : items);
     }
     case "create_fund": {
       return toText(await lglRequest("POST", "/funds", { name: args.name, description: args.description }));
@@ -2501,8 +2551,8 @@ async function handleTool(name, args, authInfo) {
     }
 
     case "list_events": {
-      const data = await lglRequest("GET", "/events?limit=200");
-      return toText(data.items ?? data);
+      const { items, truncated } = await paginateList("/events");
+      return toText(truncated ? { count: items.length, events: items, truncated: true } : items);
     }
     case "create_event": {
       return toText(await lglRequest("POST", "/events", { name: args.name, description: args.description, event_date: args.event_date }));
@@ -2521,8 +2571,8 @@ async function handleTool(name, args, authInfo) {
     // ── 4. Appeals & Appeal Requests ─────────────────────────────────────────
 
     case "list_appeals": {
-      const data = await lglRequest("GET", "/appeals?limit=200");
-      return toText(data.items ?? data);
+      const { items, truncated } = await paginateList("/appeals");
+      return toText(truncated ? { count: items.length, appeals: items, truncated: true } : items);
     }
     case "create_appeal": {
       return toText(await lglRequest("POST", "/appeals", { name: args.name, description: args.description }));
@@ -2571,13 +2621,14 @@ async function handleTool(name, args, authInfo) {
 
     // * Notes:
     case "list_notes": {
-      const params = new URLSearchParams({ limit: (args.limit ?? 50).toString() });
+      const limit = args.limit ?? 50;
+      const params = new URLSearchParams({ limit: String(limit) });
       if (args.constituent_id) {
         const data = await lglRequest("GET", `/constituents/${args.constituent_id}/notes?${params}`);
-        return toText(data.items ?? data);
+        return toText(withTruncationHint(data.items ?? data, limit));
       } else {
         const data = await lglRequest("GET", `/notes?${params}`);
-        return toText(data.items ?? data);
+        return toText(withTruncationHint(data.items ?? data, limit));
       }
     }
     case "get_note": {
@@ -2618,19 +2669,26 @@ async function handleTool(name, args, authInfo) {
 
     // * Contact Reports:
     case "list_contact_reports": {
-      const params = new URLSearchParams({ limit: (args.limit ?? 50).toString() });
+      const limit = args.limit ?? 50;
+      const params = new URLSearchParams({ limit: String(limit) });
       if (args.constituent_id) {
         const data = await lglRequest("GET", `/constituents/${args.constituent_id}/contact_reports?${params}`);
-        return toText(data.items ?? data);
+        return toText(withTruncationHint(data.items ?? data, limit));
       } else {
         const data = await lglRequest("GET", `/contact_reports?${params}`);
-        return toText(data.items ?? data);
+        return toText(withTruncationHint(data.items ?? data, limit));
       }
     }
     case "search_contact_reports": {
-      const params = new URLSearchParams({ q: args.query });
+      // Confirmed live (pre-existing bug, unrelated to the limit/truncation
+      // work above): a bare q=value 400s with "Parameter Error" the same
+      // way /constituents/search does without q[]=field=value — trying the
+      // same array-bracket format here, field "text" per create_contact_report.
+      const limit = args.limit ?? 50;
+      const params = new URLSearchParams({ limit: String(limit) });
+      params.append("q[]", `text=${args.query}`);
       const data = await lglRequest("GET", `/contact_reports/search?${params}`);
-      return toText(data.items ?? data);
+      return toText(withTruncationHint(data.items ?? data, limit));
     }
     case "get_contact_report": {
       return toText(await lglRequest("GET", `/contact_reports/${args.id}`));
@@ -2660,19 +2718,24 @@ async function handleTool(name, args, authInfo) {
 
     // * Volunteer Tracking:
     case "list_volunteer_times": {
-      const params = new URLSearchParams({ limit: (args.limit ?? 50).toString() });
+      const limit = args.limit ?? 50;
+      const params = new URLSearchParams({ limit: String(limit) });
       if (args.constituent_id) {
         const data = await lglRequest("GET", `/constituents/${args.constituent_id}/volunteer_times?${params}`);
-        return toText(data.items ?? data);
+        return toText(withTruncationHint(data.items ?? data, limit));
       } else {
         const data = await lglRequest("GET", `/volunteer_times?${params}`);
-        return toText(data.items ?? data);
+        return toText(withTruncationHint(data.items ?? data, limit));
       }
     }
     case "search_volunteer_times": {
-      const params = new URLSearchParams({ q: args.query });
+      // Same pre-existing bare-q 400 as search_contact_reports above; trying
+      // the same q[]=field=value format, field "description" per create_volunteer_time.
+      const limit = args.limit ?? 50;
+      const params = new URLSearchParams({ limit: String(limit) });
+      params.append("q[]", `description=${args.query}`);
       const data = await lglRequest("GET", `/volunteer_times/search?${params}`);
-      return toText(data.items ?? data);
+      return toText(withTruncationHint(data.items ?? data, limit));
     }
     case "get_volunteer_time": {
       return toText(await lglRequest("GET", `/volunteer_times/${args.id}`));
@@ -2753,8 +2816,9 @@ async function handleTool(name, args, authInfo) {
 
     // * Groups & Memberships:
     case "list_groups": {
-      const data = await lglRequest("GET", "/groups?limit=200");
-      return toText((data.items ?? data).map((g) => ({ id: g.id, name: g.name })));
+      const { items, truncated } = await paginateList("/groups");
+      const groups = items.map((g) => ({ id: g.id, name: g.name }));
+      return toText(truncated ? { count: groups.length, groups, truncated: true } : groups);
     }
     case "create_group": {
       return toText(await lglRequest("POST", "/groups", { name: args.name }));
@@ -2879,8 +2943,8 @@ async function handleTool(name, args, authInfo) {
     // ── 8. Categories & Keywords Customization ───────────────────────────────
 
     case "list_categories": {
-      const data = await lglRequest("GET", "/categories?limit=200");
-      return toText(data.items ?? data);
+      const { items, truncated } = await paginateList("/categories");
+      return toText(truncated ? { count: items.length, categories: items, truncated: true } : items);
     }
     case "create_category": {
       return toText(await lglRequest("POST", "/categories", { name: args.name }));
@@ -3480,7 +3544,12 @@ if (isHttpMode) {
     if (process.env.LGL_MCP_TOKEN) {
       console.error("Secure Bearer Token Authentication is ENABLED.");
     } else {
-      console.error("WARNING: LGL_MCP_TOKEN is not set. Running WITHOUT authentication.");
+      console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+      console.error("! WARNING: LGL_MCP_TOKEN is not set — this endpoint accepts        !");
+      console.error("! requests from ANYONE who can reach it, with NO authentication.   !");
+      console.error("! Only run unauthenticated if this port is bound to localhost or   !");
+      console.error("! otherwise unreachable from outside this machine.                 !");
+      console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     }
   });
 
