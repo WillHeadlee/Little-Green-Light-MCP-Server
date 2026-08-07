@@ -6,7 +6,7 @@ A direct, secure, and high-fidelity Model Context Protocol (MCP) Server for the 
 
 ## Features
 
-- **Constituents & Core Management:** Search, retrieve, create, update, and delete constituent records.
+- **Constituents & Core Management:** Search, retrieve, create, update, and delete constituent records. `create_constituent` rejects a fully blank identity (needs `organization_name`, or at least one of `first_name`/`last_name`) rather than silently creating an empty record. Bulk name-resolution helpers (used to label aggregate reports like `top_donors`) distinguish a genuine "constituent doesn't exist" from any other lookup failure (rate limit, network, auth) instead of masking both as the same fallback.
 - **Advanced Server-Side Search:** `search_constituents_advanced` filters constituents directly through LGL's own query engine — custom attributes (contains/equals/starts-with/blank/not-blank), keyword, location, membership status/level, groups, lists, and updated date — all AND'd together and referenced by friendly display name rather than internal LGL IDs. Attribute values are only included in results when explicitly requested (`include_custom_attrs`), keeping ordinary filtered lookups lightweight. `constituents_never_touched_attribute` finds records that have never had a given custom attribute set at all — a state LGL's own blank/not-blank operators can't distinguish from "set but empty." `constituents_missing_info` walks the full constituent list (not just the first page) to find records missing an email, phone, or address, and returns `count` separately from the `limit`-sliced results, flagging `truncated` if the account is large enough to hit the underlying scan's page cap.
 - **Fundraising & Gifts:** Record new gifts, list transactions (with date-range filters), search payments, and view campaigns, funds, appeals, and events. Gift/donor-lookup tools surface each record's gift type and pledge/installment linkage, and giving-total reports exclude pledges from cash totals to avoid double-counting — see [Gift Types & Pledge Linkage](#gift-types--pledge-linkage) below.
 - **Contact Sub-Resources:** Fully manage street addresses, phone numbers, email addresses, and web addresses for constituents.
@@ -120,6 +120,17 @@ By contrast, `address_type`, `phone_type`, `email_type`, `web_address_type`, `co
 
 ---
 
+## Pagination & Truncation Signals
+
+Several tools that list or search an unbounded set of records now signal when a result might be incomplete instead of silently returning a partial page as if it were everything:
+
+- **Account-wide lists** — `list_campaigns`, `list_funds`, `list_events`, `list_appeals`, `list_groups`, `list_categories` — walk the full dataset (up to a 5,000-record cap) instead of a single hardcoded `limit=200` call. The response is a plain array as before, unless the cap was hit, in which case it becomes `{ count, <items>, truncated: true }` so an incomplete result is never mistaken for a complete one. The same underlying fix applies to internal name-based lookups (resolving a group, custom attribute, list, membership level, or keyword by name) that used to falsely report "does not exist" for a real value past the old 200-record cap.
+- **`search_contact_reports`, `search_volunteer_times`, and the unscoped (no `constituent_id`) mode of `list_notes`/`list_contact_reports`/`list_volunteer_times`** — accept a `limit` param and flag it when a page comes back exactly full (a heuristic, not a guarantee, since the true count could coincidentally match the limit): the response becomes `{ count, results, note }` prompting you to raise `limit` or narrow the query.
+
+**Separately:** `search_contact_reports` and `search_volunteer_times` previously 400'd on every call regardless of query — a pre-existing bug unrelated to the above, discovered while testing it. Same root cause as the `/constituents/search` quirk already covered below: LGL rejects a bare `q=value` and requires `q[]=field=value`. Fixed using that format (fields `text`/`description`, matching what `create_contact_report`/`create_volunteer_time` already write) — confirmed live for contact reports; volunteer time search no longer errors, though this account has no volunteer time records to fully confirm the field name against.
+
+---
+
 ## Gift Types & Pledge Linkage
 
 In LGL, pledges, matching gifts, and installment payments are not separate object types — they're all `Gift` records distinguished by a `gift_type_name`/`gift_category_name` pair, with payments linked back to what they pay against via `parent_gift_id`. Left as raw API output, this is easy to misread (an installment payment looks like an unrelated small gift unless you know it has a `parent_gift_id` pointing at a pledge). This server surfaces that distinction explicitly:
@@ -156,7 +167,7 @@ To launch the server in Streamable HTTP mode, use the `--http` (or `--sse`) flag
 node index.js --http --port 3000
 ```
 - **Port Selection:** Custom ports can be specified using `--port <number>` or the `PORT` environment variable (defaults to `3000`).
-- **Secure Token Protection:** If you set `LGL_MCP_TOKEN` in your `.env` file, Bearer Token Authentication is strictly enforced. All client requests must include the header `Authorization: Bearer <your_token>`, or they will be rejected with `401 Unauthorized`.
+- **Secure Token Protection:** If you set `LGL_MCP_TOKEN` in your `.env` file, Bearer Token Authentication is strictly enforced. All client requests must include the header `Authorization: Bearer <your_token>`, or they will be rejected with `401 Unauthorized`. **If you don't set it, the server starts anyway with no authentication at all** — it logs a hard-to-miss warning on startup, but accepts requests from anyone who can reach the port. Only run without a token if it's bound to localhost or otherwise unreachable from outside the machine.
 
 ---
 
